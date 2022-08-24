@@ -13,6 +13,8 @@
 
 from AqMD3 import *
 import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime
 
 # Edit resource and options as needed. Resource is ignored if option Simulate=True.
 resourceString = "PXI2::0::0::INSTR"
@@ -54,12 +56,14 @@ try:
             channel.Configure(range, offset, coupling, True)
 
         # Configure the acquisition.
-        numPointsPerRecord = 5000
+        numPointsPerRecord = 1000000000
 
         print()
         print("Configuring acquisition")
         print("Record size:        ", numPointsPerRecord)
         driver.Acquisition.RecordSize = numPointsPerRecord
+        
+        print("driver.Acquisition.RecordSize: ", driver.Acquisition.RecordSize)
 
         # Configure the trigger.
         sourceName = "External1"
@@ -83,36 +87,56 @@ try:
         print()
         print("Performing self-calibration")
         driver.Calibration.SelfCalibrate()
+        
+        data = np.zeros(100000000)
+        arr=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
+        
+        waveforms = []
+        for k in arr:
+            print(k)
+            print(datetime.now().strftime("%H:%M:%S"))
 
-        # Perform the acquisition.
-        print()
-        print("Performing acquisition")
-        driver.Acquisition.Initiate()
-        timeoutInMs = 1000
-        driver.Acquisition.WaitForAcquisitionComplete(timeoutInMs)
-        print("Acquisition completed")
-
-        waveform = None
-        for channel in driver.Channels:
+            # Perform the acquisition.
             print()
-            print("Fetching data from ", channel.Name)
+            print("Performing acquisition")
+            driver.Acquisition.Initiate()
+            timeoutInMs = 10000
+            driver.Acquisition.WaitForAcquisitionComplete(timeoutInMs)
+            print("Acquisition completed")
 
-            # Fetch the acquired data
-            waveform = channel.Measurement.FetchWaveform(waveform)
-            print("First samples:", *waveform[:10])
+            waveform = None
+            for channel in driver.Channels:
+                print()
+                print("Fetching data from ", channel.Name)
 
-            print("Processing data fetched from ", channel.Name)
-            # Convert data to Volts.
-            convertedSamples = []
-            for sampleRaw in waveform:
-                # the same sample in volts
-                sampleInVolts = sampleRaw * waveform.ScaleFactor + waveform.ScaleOffset
-                convertedSamples.append(sampleInVolts)
-            plt.plot(convertedSamples)
-            plt.show()
-            break
+                # Fetch the acquired data
+                waveform = channel.Measurement.FetchWaveform(waveform)
+                print("First samples:", *waveform[:10])
 
-        print("Processing completed. ")
+                print("Processing data fetched from ", channel.Name)
+                # Convert data to Volts.
+                
+                # convertedSamples = []
+                # for sampleRaw in waveform:
+                #     # the same sample in volts
+                #     sampleInVolts = sampleRaw * waveform.ScaleFactor + waveform.ScaleOffset
+                #     convertedSamples.append(sampleInVolts)
+                # data += convertedSamples
+                
+                # waveformNP = []
+                # for sample in waveform:
+                #     waveformNP.append(sample)
+                # waveformNP = np.array(waveformNP)
+                # waveformNP = waveformNP * waveform.ScaleFactor + waveform.ScaleOffset
+                waveforms.append(waveform)
+                # plt.plot(convertedSamples)
+                # plt.show()
+                break
+        
+            print("Processing completed. ")
+            
+        plt.plot(data)
+        plt.show()
 
     # Automaticaly close the driver at end of with clause.
     print("Driver closed")
