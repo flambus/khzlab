@@ -1,0 +1,497 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Apr 10 16:42:46 2014
+
+@author: Atze
+"""
+
+from ctypes import *
+#from pickle import FALSE
+import numpy as np
+from AqMD3 import *
+
+acqiris = CDLL("/usr/lib/libAqMD3.so")
+
+print(acqiris)
+
+IVI_ATTR_BASE = c_uint32(1000000)
+IVI_CLASS_ATTR_BASE = c_uint32(IVI_ATTR_BASE.value + c_uint32(250000).value)
+AQMD3_ATTR_SAMPLE_RATE = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(15).value)
+AQMD3_ATTR_TRIGGER_DELAY = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(17).value)
+AQMD3_ATTR_RECORD_SIZE = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(14).value)
+AQMD3_ATTR_NUM_RECORDS_TO_ACQUIRE = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(13).value)
+AQMD3_ATTR_ACTIVE_TRIGGER_SOURCE = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(1).value)
+AQMD3_ATTR_TRIGGER_LEVEL = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(19).value)
+AQMD3_ATTR_TRIGGER_SLOPE = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(21).value)
+AQMD3_VAL_POSITIVE = c_uint32(1)
+AQMD3_VAL_NEGATIVE = c_uint32(2)
+AQMD3_ATTR_TRIGGER_COUPLING = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(16).value)
+AQMD3_VAL_TRIGGER_COUPLING_DC = c_uint32(1)
+AQMD3_ATTR_TRIGGER_TYPE = c_uint32(IVI_CLASS_ATTR_BASE.value + c_uint32(23).value)
+AQMD3_VAL_EDGE_TRIGGER = c_int32(1)
+AQMD3_VAL_VERTICAL_COUPLING_DC = c_uint32(1)
+
+resource = c_char_p(b'PXI2::0::0::INSTR')
+options = c_char_p(b'Simulate=false, DriverSetup= Model=U5310A')
+InstrID = c_uint32(0)
+
+# driver = AqMD3(resource, True, True, options)
+
+# # Configure channel properties.
+# range = 1.0
+# channelOffset = 0.0
+# for channel in driver.Channels:
+#     print("Applying on ", channel.Name)
+#     channel.Configure(range, channelOffset, AQMD3_VAL_VERTICAL_COUPLING_DC, True)
+
+#F_Prefix = getattr(acqiris, "AqMD3_GetAttributeViString")
+#print(F_Prefix())
+
+#General
+#F_getNbrInst = getattr(acqiris,"Acqrs_getNbrInstruments")
+F_Init = getattr(acqiris,"AqMD3_InitWithOptions")
+F_Close = getattr(acqiris,"AqMD3_close")
+#Configuration
+F_ConfigH = getattr(acqiris,"AqMD3_SetAttributeViReal64")
+F_ConfigMem = getattr(acqiris,"AqMD3_SetAttributeViInt64")
+F_ConfigV = getattr(acqiris,"AqMD3_ConfigureChannel") #q
+F_ConfigTrigClass = getattr(acqiris,"AqMD3_SetAttributeViInt32")
+F_ConfigTrigSource1 = getattr(acqiris,"AqMD3_SetAttributeViString")
+F_ConfigTrigSource2 = getattr(acqiris,"AqMD3_SetAttributeViReal64")
+F_ConfigTrigSource3 = getattr(acqiris,"AqMD3_SetAttributeViInt32")
+#F_ConfigMode = getattr(acqiris,"AcqrsD1_configMode")
+#F_ConfigAvg = getattr(acqiris,"AcqrsD1_configAvgConfig")
+#Aquisition, Processing, Reading
+F_Acquire = getattr(acqiris,"AqMD3_InitiateAcquisition")
+#F_Process = getattr(acqiris,"AcqrsD1_processData")
+F_ForceTrig = getattr(acqiris,"AqMD3_SendSoftwareTrigger")
+F_Wait = getattr(acqiris,"AqMD3_WaitForAcquisitionComplete")
+F_Read = getattr(acqiris,"AqMD3_FetchWaveformInt16") #q
+F_Error = getattr(acqiris,"AqMD3_GetError")
+F_Calibrate = getattr(acqiris, "AqMD3_SelfCalibrate")
+
+
+class readPar_c(Structure):
+    _fields_ = [("dataType",c_int),
+                ("readMode",c_int),
+                ("firstSegment",c_int),
+                ("nbrSegments",c_int),
+                ("firstSampleInSeg",c_int),
+                ("nbrSamplesInSeg",c_int),
+                ("segmentOffset",c_int),
+                ("dataArraySize",c_int),
+                ("segDescArraySize",c_int),
+                ("flags",c_int),
+                ("res1",c_int),
+                ("res2",c_double),
+                ("res3",c_double)]
+                
+class dataDesc_c(Structure):
+    _fields_ = [("returnedSamplesPerSeg",c_int),
+                ("indexFirstPoint",c_int),
+                ("sampTime",c_double),
+                ("vGain",c_double),
+                ("vOffset",c_double),
+                ("returnedSegments",c_int),
+                ("nbrAvgWforms",c_int),
+                ("actualTrigLo",c_int),
+                ("actualTrigHi",c_int),
+                ("actualDataSize",c_int),
+                ("res2",c_int),
+                ("res3",c_int)
+                ]
+                
+class segDesc_c(Structure):
+    _fields_ = [("horPos",c_double),
+                ("timeStampLo",c_int),
+                ("timeStampHi",c_int),
+                ("actualTriggers",c_int),
+                ("avgOfl",c_int),
+                ("avgStatus",c_int),
+                ("avgMax",c_int),
+                ("flags",c_int),
+                ("res",c_int),
+                ]
+
+
+class Acqiris(object):
+    def __init__(self):
+        self.Status = 0
+        self.InstrID = c_uint32(0)
+        self.ErrMessage = ''
+        
+    def Error(self, Status):
+        if self.Status != 0:
+            tmp = c_int32(self.Status)
+            Message = create_string_buffer(512)
+            # F_Error(c_int(0), hex(id(self.Status)), sizeof(Message), Message)
+            # F_Error(c_int(0), self.Status, sizeof(Message), Message)
+            F_Error(self.InstrID, byref(tmp), c_int32(sizeof(Message)), Message)
+            #self.ErrMessage = Message.value.decode("utf-8")
+            self.ErrMessage = Message.value.decode("utf-8")
+            print("error: ", str.encode(self.ErrMessage))
+
+    # def getNbrInst(self):
+    #     Nbr = c_int(0)
+    #     self.Status = F_getNbrInst(byref(Nbr))
+    #     self.Error()
+    #     return Nbr.value
+        
+    def Init(self):
+        serial = c_char_p(b'PXI2::0::0::INSTR')
+        #self.Status = F_Init(resource, True, True, options, byref(InstrID))
+        true16 = c_int16(1)
+        self.Status = F_Init(resource, true16, true16, options, byref(self.InstrID))
+        # self.Status = F_Init(resource, c_bool(True), c_bool(True), options, byref(InstrID))
+        self.Error(self.Status)
+        print("init done")
+    
+    def Calibrate(self):
+        self.Status = F_Calibrate(self.InstrID)
+        self.Error(self.Status)
+        print("calibration done")
+        
+    def Close(self):
+        self.Status = F_Close(self.InstrID)
+        self.Error(self.Status)
+        
+    def Configure(self,SampInt,delay,N_samp,channel,fullscale,offset,trigChannel,fullscaleTrig,offsetTrig,trigLevel):
+        #self.Status = F_ConfigH(self.InstrID, "", AQMD3_ATTR_SAMPLE_RATE, c_double(SampInt*1e-9))
+        # self.Status = F_ConfigH(self.InstrID, "", AQMD3_ATTR_SAMPLE_RATE, c_double(SampInt*1e9))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        print("entering configuration")
+        print(type(delay))
+        #self.Status = F_ConfigH(self.InstrID, c_char_p(b''), AQMD3_ATTR_TRIGGER_DELAY, c_double(delay))
+        self.Status = F_ConfigH(c_uint32(1), b"", AQMD3_ATTR_TRIGGER_DELAY, c_double(0.0))
+        self.Error(self.Status)
+        print("status after configH: ", self.Status)
+        if self.Status != 0:
+            return
+        print("F_ConfigH done")
+        self.Status = F_ConfigMem(self.InstrID, b"", AQMD3_ATTR_RECORD_SIZE, c_int(N_samp))
+        self.Error(self.Status)
+        if self.Status != 0:
+            return
+        print("F_ConfigMem done")
+        self.Status = F_ConfigMem(self.InstrID, b"", AQMD3_ATTR_NUM_RECORDS_TO_ACQUIRE, c_int(1))
+        self.Error(self.Status)
+        if self.Status != 0:
+            return
+        print("F_ConfigMem done")
+        # self.Status = F_ConfigV(self.InstrID,c_int(channel),c_double(fullscale), \
+        #         c_double(offset),c_int(3),c_int(0))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigV(self.InstrID,c_int(trigChannel),c_double(fullscaleTrig), \
+        #         c_double(offsetTrig),c_int(3),c_int(0))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        
+        
+        # self.Status = F_ConfigV(self.InstrID, c_char_p(b'Channel1'), c_double(fullscale), c_double(offset), AQMD3_VAL_VERTICAL_COUPLING_DC, c_bool(True))
+        # self.Error(self.Status)
+        # if self.Status != 0:
+        #     return
+        # print("F_ConfigV done")
+        self.Status = F_ConfigV(self.InstrID, c_char_p(b'Channel2'), c_double(1.0), c_double(0.0), AQMD3_VAL_VERTICAL_COUPLING_DC, c_bool(True))
+        self.Error(self.Status)
+        if self.Status != 0:
+            return
+        print("F_ConfigV done")
+        
+        # self.Status = F_ConfigV(self.InstrID, c_char_p(b'External1'), c_double(fullscaleTrig), c_double(offsetTrig), AQMD3_VAL_VERTICAL_COUPLING_DC, c_bool(True))
+        # self.Error(self.Status)
+        # if self.Status != 0:
+        #     return
+        # print("F_ConfigV done")
+        
+        self.Status = F_ConfigTrigClass(self.InstrID, b"External1", AQMD3_ATTR_TRIGGER_TYPE, AQMD3_VAL_EDGE_TRIGGER)
+        self.Error(self.Status)
+        if self.Status != 0:
+            return
+        print("F_ConfigTrigClass done")
+        
+        trigLevel_pct = 100*trigLevel/fullscaleTrig
+        
+        self.Status = F_ConfigTrigSource1(self.InstrID, b"", AQMD3_ATTR_ACTIVE_TRIGGER_SOURCE, b"External1")
+        self.Error(self.Status)
+        
+        self.Status = F_ConfigTrigSource2(self.InstrID, b"External1", AQMD3_ATTR_TRIGGER_LEVEL, c_double(trigLevel))
+        self.Error(self.Status)
+        
+        self.Status = F_ConfigTrigSource3(self.InstrID, b"External1", AQMD3_ATTR_TRIGGER_SLOPE, AQMD3_VAL_POSITIVE)
+        self.Error(self.Status)
+        
+        self.Status = F_ConfigTrigSource3(self.InstrID, b"External1", AQMD3_ATTR_TRIGGER_COUPLING, AQMD3_VAL_TRIGGER_COUPLING_DC)
+        self.Error(self.Status)
+        print("F_ConfigTrigSource done")
+        
+    def ConfigureAvg(self,N_samp,NbrWF,DitherRange,TrigResync):
+        # self.Status = F_ConfigMode(self.InstrID,c_int(2),c_int(0),c_int(0))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"NbrSamples"),byref(c_int(N_samp)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"NbrSegments"),byref(c_int(1)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"StartDelay"),byref(c_int(0)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"StopDelay"),byref(c_int(0)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"NbrWaveforms"),byref(c_int(NbrWF)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"DitherRange"),byref(c_int(DitherRange)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        # self.Status = F_ConfigAvg(self.InstrID,c_int(0), \
+        #         c_char_p(b"TrigResync"),byref(c_int(TrigResync)))
+        # self.Error()
+        # if self.Status != 0:
+        #     return   
+        self.Error(self.Status)         
+
+        
+    def Acquire(self):
+        self.Status = F_Acquire(self.InstrID)
+        self.Error(self.Status)
+        #self.getNbrInst()      
+        if self.Status != 0:
+            print(self.Status)
+            print(self.ErrMessage)
+            print('fault acquire')
+            
+        
+    def Read(self,channel,readMode,N_samp,Timeout):
+        #ReadMode 0 for normal, 2 for Averager
+        # Array = c_double*(N_samp)
+        # dataArray = Array()
+        
+        pyarr = [0] * N_samp
+        # seq = c_int16 * len(pyarr)
+        seq = c_double * len(pyarr)
+        waveformArray = seq(*pyarr)
+        
+        Array = c_double*(N_samp)
+        dataArray = Array()
+        
+        segDesc = segDesc_c(0,0,0,0,0,0,0,0,0)                
+        readPar = readPar_c(3,readMode,0,1,0,N_samp,N_samp,sizeof(waveformArray),sizeof(segDesc),0,0,0)
+        dataDesc = dataDesc_c(0,0,0,0,0,0,0,0,0,0,0,0)  
+        self.Status = F_Wait(self.InstrID,c_int(Timeout))
+        if self.Status == -1074116352:
+            print('fault read mode wait')            
+            #Wait Timeout
+            if readMode == 0:
+                self.Status = F_ForceTrig(self.InstrID)
+                self.Error(self.Status)
+                if self.Status != 0:
+                    print('fault read mode a')
+                    return np.zeros(N_samp)
+                self.Status = F_Wait(self.InstrID,c_int(Timeout))
+                self.Error(self.Status)
+                if self.Status != 0:
+                    print('fault read mode b')
+                    return np.zeros(N_samp)               
+            else:
+                self.Error(self.Status)
+                return np.zeros(N_samp)
+        elif self.Status != 0:
+            print('fault read mode gen')            
+            print(self.Status)            
+            self.Error(self.Status)
+            return np.zeros(N_samp)
+        # self.Status = F_Read(self.InstrID,c_int(channel),byref(readPar), \
+        #         byref(dataArray),byref(dataDesc),byref(segDesc))
+        
+        sizeOfDataArray = c_int64(sizeof(waveformArray))
+        firstRecord = c_int(0)
+        waveformArrayActualSize = c_int(0)
+        actualRecords = c_int(0)
+        actualPoints = c_int64(0)
+        firstValidPoint = c_int64(0)
+        initialXOffset = c_double(0)
+        initialXTimeSeconds = c_double(0)
+        initialXTimeFraction = c_double(0)
+        xIncrement = c_double(0)
+        scaleFactor = c_double(0)
+        scaleOffset = c_double(0)
+        print(self.InstrID)
+        # self.Status = F_Read(self.InstrID, b"Channel1", firstRecord, sizeOfDataArray, waveformArray, waveformArrayActualSize, actualRecords, byref(actualPoints), \
+        #     byref(firstValidPoint), byref(initialXOffset), byref(initialXTimeSeconds), byref(initialXTimeFraction), byref(xIncrement), \
+        #         byref(scaleFactor), byref(scaleOffset))
+        
+        # self.Status = F_Read(self.InstrID, b"Channel1", sizeOfDataArray, waveformArray, byref(actualPoints), \
+        #     byref(firstValidPoint), byref(initialXOffset), byref(initialXTimeSeconds), byref(initialXTimeFraction), byref(xIncrement), \
+        #         byref(scaleFactor), byref(scaleOffset))
+        
+        self.Status = F_Read(self.InstrID, b"Channel1", sizeOfDataArray, byref(dataArray), byref(actualPoints), \
+            byref(firstValidPoint), byref(initialXOffset), byref(initialXTimeSeconds), byref(initialXTimeFraction), byref(xIncrement), \
+                byref(scaleFactor), byref(scaleOffset))
+        print(dataArray)
+        print(type(dataArray))
+        print(np.array(dataArray[:]))
+        print(len(dataArray))
+        print(type(np.array(dataArray[:])))
+        print(type(np.array(dataArray[:][0])))
+        print(np.array(dataArray[:][0]))
+        print(np.array(dataArray[:][0]).dtype)
+        
+        # f = open("/home/granados/tof/venv/acqData.txt", "w")
+        # f.write(dataArray)
+        # f.close()
+        
+        self.Error(self.Status)
+        if self.Status != 0:
+            print('fault read 1')
+            return np.zeros(N_samp)
+        return np.array(dataArray[:])
+     
+    # def Read_dual(self,readMode,N_samp,Timeout):
+    #     #ReadMode 0 for normal, 2 for Averager
+    #     Array = c_double*(N_samp)
+    #     dataArray = Array()
+    #     segDesc = segDesc_c(0,0,0,0,0,0,0,0,0)                
+    #     readPar = readPar_c(3,readMode,0,1,0,N_samp,N_samp,sizeof(dataArray),sizeof(segDesc),0,0,0)
+    #     dataDesc = dataDesc_c(0,0,0,0,0,0,0,0,0,0,0,0)        
+    #     #print('8')
+    #     self.Status = F_Wait(self.InstrID,c_int(Timeout))
+    #     #print('9')
+    #     if self.Status == -1074116352:
+    #         #print('fault read mode wait')            
+    #         #Wait Timeout
+    #         if readMode == 0:
+    #             self.Status = F_ForceTrig(self.InstrID)
+    #             #print('10')
+    #             self.Error()
+    #             if self.Status != 0:
+    #                 #print('fault read mode a')
+    #                 return np.zeros(N_samp)
+    #             self.Status = F_Wait(self.InstrID,c_int(Timeout))
+    #             #print('11')                
+    #             self.Error()
+    #             if self.Status != 0:
+    #                 #print('fault read mode b')
+    #                 return np.zeros(N_samp)               
+    #         else:
+    #             self.Error()
+    #             return np.zeros(N_samp)
+    #     elif self.Status != 0:
+    #         #print('fault read mode gen')            
+    #         print(self.Status)            
+    #         self.Error()
+    #         return np.zeros(N_samp)            
+    #     self.Status = F_Read(self.InstrID,c_int(1),byref(readPar), \
+    #             byref(dataArray),byref(dataDesc),byref(segDesc))
+    #     #print('12')
+    #     self.Error()
+    #     a=np.array(dataArray[:])
+    #     self.Status = F_Read(self.InstrID,c_int(2),byref(readPar), \
+    #             byref(dataArray),byref(dataDesc),byref(segDesc))
+    #     #print('13')
+    #     if self.Status != 0:
+    #         #print('fault read 1')
+    #         return np.zeros(N_samp),np.zeros(N_samp)
+    #     return a,np.array(dataArray[:])
+        
+     
+    
+        
+    def ConfigureExt(self,SampInt,delay,N_samp,channel1,channel2,fullscale1,fullscale2,offset1,offset2,trigLevel):
+        #don not forget to conert triglevel from V to mV
+        trigChannel=-1        
+        # self.Status = F_ConfigH(self.InstrID, "", AQMD3_ATTR_SAMPLE_RATE, c_double(SampInt*1e-9))
+        # self.Error()
+        # if self.Status != 0:
+        #     return
+        self.Status = F_ConfigH(self.InstrID, c_char_p(b''), AQMD3_ATTR_TRIGGER_DELAY,c_double(delay))
+        self.Error(self.Status)
+        if self.Status != 0:
+            print('fault hori')            
+            return
+        self.Status = F_ConfigMem(self.InstrID, "", AQMD3_ATTR_RECORD_SIZE, c_int(N_samp))
+        self.Status = F_ConfigMem(self.InstrID, "", AQMD3_ATTR_NUM_RECORDS_TO_ACQUIRE, c_int(1))
+        #print('2')        
+        self.Error(self.Status)
+        if self.Status != 0:
+            print('fault mem')
+            return
+        
+        self.Status = F_ConfigV(self.InstrID, c_char_p(b'Channel1'), c_double(fullscale1), c_double(offset1), AQMD3_VAL_VERTICAL_COUPLING_DC, c_bool(True))
+        #print('3')
+        self.Error(self.Status)   
+        if self.Status != 0:
+            print('fault vertical 1')
+            return
+        
+        self.Status = F_ConfigV(self.InstrID, c_char_p(b'Channel2'), c_double(fullscale2), c_double(offset2), AQMD3_VAL_VERTICAL_COUPLING_DC, c_bool(True))
+        self.Error(self.Status)
+        if self.Status != 0:
+            print('fault vertical 2')
+            return
+        
+        # self.Status = F_ConfigV(self.InstrID,c_int(channel2),c_double(fullscale2), \
+        #         c_double(offset2),c_int(3),c_int(0))
+        # #print('4')
+        # self.Error()   
+        # if self.Status != 0:
+        #     print('fault vertical 2')
+        #     return
+        self.Status = F_ConfigV(self.InstrID, c_char_p(b'External1'), c_double(1.0), c_double(0.0), AQMD3_VAL_VERTICAL_COUPLING_DC, c_bool(True))
+        #print('5')
+        self.Error(self.Status)   
+        if self.Status != 0:
+            print('fault vertical trig')
+            return
+        
+        self.Status = F_ConfigTrigClass(self.InstrID, "External1", AQMD3_ATTR_TRIGGER_TYPE, AQMD3_VAL_EDGE_TRIGGER)
+        #print('6')
+        self.Error(self.Status)
+        if self.Status != 0:
+            print('fault trig class')            
+            return
+        
+        trigLevel_mV = 1000*trigLevel
+        
+        self.Status = F_ConfigTrigSource1(self.InstrID, "", AQMD3_ATTR_ACTIVE_TRIGGER_SOURCE, "External1")
+        self.Error(self.Status)
+        
+        self.Status = F_ConfigTrigSource2(self.InstrID, "External1", AQMD3_ATTR_TRIGGER_LEVEL, c_double(trigLevel))
+        self.Error(self.Status)
+        
+        self.Status = F_ConfigTrigSource3(self.InstrID, "External1", AQMD3_ATTR_TRIGGER_SLOPE, AQMD3_VAL_POSITIVE)
+        self.Error(self.Status)
+        
+        self.Status = F_ConfigTrigSource3(self.InstrID, "External1", AQMD3_ATTR_TRIGGER_COUPLING, AQMD3_VAL_TRIGGER_COUPLING_DC)
+        self.Error(self.Status)
+        
+        #print('7')
+        self.Error(self.Status)
+        if self.Status != 0:
+            print('fault trig source')            
+            return 
+            
+     
+     
+        
