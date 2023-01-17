@@ -25,6 +25,11 @@ import sys
 import time
 import numpy as np
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+
+from PIL import Image
+
 # Related third party imports
 from PyQt5.QtCore import QMutexLocker, QMutex, pyqtSignal, QThread
 from PyQt5.QtGui import QKeySequence
@@ -370,7 +375,8 @@ class Harvester(QMainWindow):
         #self._widget_device_list3.setMinimum(0)
         self._widget_device_list3.setSingleStep(1000)
         self._widget_device_list3.setRange(0, 2147483647)
-        self._widget_device_list3.valueChanged.connect(self._set_exposition)
+        self._widget_device_list3.editingFinished.connect(lambda: self._set_exposition(self._widget_device_list3.value()))
+        #self._widget_device_list3.valueChanged.connect(self._set_exposition)
         #self._widget_device_list3.textChanged.connect(self._set_exposition)
         #self._widget_device_list3.currentTextChanged.connect(self._set_exposition)
         group_display.addWidget(self._widget_device_list3)
@@ -468,17 +474,46 @@ class Harvester(QMainWindow):
 
         # ROI (REGION OF INTEREST)
         button_roi = ActionRoi(
-            icon='crop.png', title='Start Acquisition', parent=self,
+            icon='crop.png', title='Crop image', parent=self,
             action=self.action_on_roi,
             is_enabled=self.is_enabled_on_roi
         )
         shortcut_key = 'Ctrl+j'
         button_roi.setToolTip(
-            compose_tooltip('Start image acquisition', shortcut_key)
+            compose_tooltip('Crop image', shortcut_key)
         )
         button_roi.setShortcut(shortcut_key)
         button_roi.toggle()
         observers.append(button_roi)
+
+        # SUM OF LINES IN CROPPED AREA
+        button_sum = ActionSum(
+            icon='histogram.png', title='Analysis', parent=self,
+            action=self.action_on_sum,
+            is_enabled=self.is_enabled_on_sum
+        )
+        shortcut_key = 'Ctrl+j'
+        button_sum.setToolTip(
+            compose_tooltip('Analysis', shortcut_key)
+        )
+        button_sum.setShortcut(shortcut_key)
+        button_sum.toggle()
+        observers.append(button_sum)
+
+        # SAVE IMAGE
+        button_save = ActionSaveImage(
+            icon='save.png', title='Analysis', parent=self,
+            action=self.action_on_save_image,
+            is_enabled=self.is_enabled_on_save_image
+        )
+        shortcut_key = 'Ctrl+j'
+        button_save.setToolTip(
+            compose_tooltip('Analysis', shortcut_key)
+        )
+        button_save.setShortcut(shortcut_key)
+        button_save.toggle()
+        observers.append(button_save)
+
 
         # ABOUT HARVESTER
         self._widget_about = About(self)
@@ -503,6 +538,8 @@ class Harvester(QMainWindow):
         button_select_file.add_observer(button_toggle_drawing)
         button_select_file.add_observer(button_stop_image_acquisition)
         button_select_file.add_observer(button_roi)
+        button_select_file.add_observer(button_sum)
+        button_select_file.add_observer(button_save)
         button_select_file.add_observer(self._widget_device_list)
         button_select_file.add_observer(self._widget_device_list2)
         button_select_file.add_observer(self._widget_device_list3)
@@ -513,6 +550,8 @@ class Harvester(QMainWindow):
         button_update.add_observer(self._widget_device_list3)
         button_update.add_observer(button_connect)
         button_update.add_observer(button_roi)
+        button_update.add_observer(button_sum)
+        button_update.add_observer(button_save)
 
         #
         button_connect.add_observer(button_select_file)
@@ -526,6 +565,8 @@ class Harvester(QMainWindow):
         button_connect.add_observer(self._widget_device_list2)
         button_connect.add_observer(self._widget_device_list3)
         button_connect.add_observer(button_roi)
+        button_connect.add_observer(button_sum)
+        button_connect.add_observer(button_save)
 
         #
         button_disconnect.add_observer(button_select_file)
@@ -539,6 +580,9 @@ class Harvester(QMainWindow):
         button_disconnect.add_observer(self._widget_device_list2)
         button_disconnect.add_observer(self._widget_device_list3)
         button_disconnect.add_observer(button_roi)
+        button_disconnect.add_observer(button_sum)
+        button_disconnect.add_observer(button_save)
+
 
         #
         # button_test.add_observer(button_update)
@@ -579,6 +623,8 @@ class Harvester(QMainWindow):
         group_device.addAction(button_toggle_drawing)
         group_device.addAction(button_stop_image_acquisition)
         group_device.addAction(button_roi)
+        group_device.addAction(button_sum)
+        group_device.addAction(button_save)
         group_device.addAction(button_dev_attribute)
 
         #
@@ -676,8 +722,11 @@ class Harvester(QMainWindow):
         )
         self.ia.signal_stop_image_acquisition = self._signal_stop_image_acquisition
         self.ia.remote_device.node_map.ExposureTimeRaw.value = 16000
-        self.ia.remote_device.node_map.ExposureTimeRaw.value = 1
         self._widget_device_list3.setValue(16000)
+        self.ia.remote_device.node_map.OffsetX.value = 0
+        self.ia.remote_device.node_map.OffsetY.value = 0
+        self.ia.remote_device.node_map.Width.value = 1280
+        self.ia.remote_device.node_map.Height.value = 966
         self._width = int(self.ia.remote_device.node_map.Width.value)
         self._heigth = int(self.ia.remote_device.node_map.Height.value)
         self.standardWidth = self._width
@@ -721,14 +770,21 @@ class Harvester(QMainWindow):
                 self.is_enabled_on_stop_image_acquisition()
                 self.ia.remote_device.node_map.OffsetX.value = 0
                 self.ia.remote_device.node_map.OffsetY.value = 0
-                self.ia.remote_device.node_map.Width.value = 1280
-                self.ia.remote_device.node_map.Height.value = 966
+                self.ia.remote_device.node_map.Width.value = self.standardWidth
+                self.ia.remote_device.node_map.Height.value = self.standardHeigth
                 print("OffsetX after disconnect ", self.ia.remote_device.node_map.OffsetX.value)
                 print("OffsetY after disconnect ", self.ia.remote_device.node_map.OffsetY.value)
                 print("Width after disconnect ", self.ia.remote_device.node_map.Width.value)
                 print("Height after disconnect ", self.ia.remote_device.node_map.Height.value)
                 self.ia.destroy()
                 self._ia = None
+
+    def is_enabled_on_disconnect(self):
+        enable = False
+        if self.cti_files:
+            if self.ia:
+                enable = True
+        return enable
 
     def action_on_select_file(self):
         # Show a dialog and update the CTI file list.
@@ -756,22 +812,54 @@ class Harvester(QMainWindow):
             enable = True
         return enable
 
-    def action_on_test(self):
-        pass
+    def action_on_sum(self):
+        with self.ia.fetch() as buffer:
+            component = buffer.payload.components[0]
 
-    def is_enabled_on_test(self):
+            _2d = component.data.reshape(
+                component.height, component.width
+            )
+
+            lineSumHorizontal = _2d.sum(axis=1)
+            lineSumVertical = _2d.sum(axis=0)
+            
+            plt.hist(lineSumVertical, density=True, bins=int(lineSumVertical.shape[0] / 8))
+            plt.show()
+
+
+    def is_enabled_on_sum(self):
         enable = False
-        if self.ia is None:
-            enable = True
+        if self.cti_files:
+            if self.ia:
+                enable = True
         return enable
+
+    def action_on_save_image(self):
+        with self.ia.fetch() as buffer:
+            component = buffer.payload.components[0]
+
+            _2d = component.data.reshape(
+                component.height, component.width
+            )
+
+            img = Image.fromarray(_2d)
+            img.save("image.png")
+
+
+    def is_enabled_on_save_image(self):
+        enable = False
+        if self.cti_files:
+            if self.ia:
+                enable = True
+        return enable
+
 
     def _set_exposition(self, value):
         try:
             self.action_on_stop_image_acquisition()
-            self.is_enabled_on_stop_image_acquisition()
             self.ia.remote_device.node_map.ExposureTimeRaw.value = int(value)
             self.action_on_start_image_acquisition()
-            self.is_enabled_on_start_image_acquisition()
+            # self.is_enabled_on_start_image_acquisition()
         except AttributeError:
             pass
     
@@ -782,13 +870,6 @@ class Harvester(QMainWindow):
         enable = False
         if self.cti_files:
             if self.ia is None:
-                enable = True
-        return enable
-
-    def is_enabled_on_disconnect(self):
-        enable = False
-        if self.cti_files:
-            if self.ia:
                 enable = True
         return enable
 
@@ -866,18 +947,23 @@ class Harvester(QMainWindow):
 
     def action_on_start_image_acquisition(self):
         if self.ia.is_acquiring():
+            print("if")
             # If it's pausing drawing images, just resume it and
             # immediately return this method.
             if self.canvas.is_pausing():
+                print("if 2")
                 self.canvas.resume_drawing()
         else:
+            print("else")
             # Start statistics measurement:
             self.ia.statistics.reset()
+            print("done")
             self._thread_statistics_measurement.start()
-
+            print("done 2")
             #self.ia.start_image_acquisition()
-            #self.ia.start()
-            self.ia.start_acquisition()
+            self.ia.start()
+            #self.ia.start_acquisition()
+            print("done 3")
 
     def is_enabled_on_start_image_acquisition(self):
         enable = False
@@ -955,11 +1041,16 @@ class Harvester(QMainWindow):
                 self.action_on_start_image_acquisition()
                 self.is_enabled_on_start_image_acquisition()
             elif value == '16':
-                self.action_on_stop_image_acquisition()
-                self.is_enabled_on_stop_image_acquisition()
-                self.ia.remote_device.node_map.GainRaw.value = 16
-                self.action_on_start_image_acquisition()
                 self.is_enabled_on_start_image_acquisition()
+                self.action_on_stop_image_acquisition()
+                print("acq stopped on gain=16")
+                #self.is_enabled_on_stop_image_acquisition()
+                self.ia.remote_device.node_map.GainRaw.value = 16
+                print(self.ia.remote_device.node_map.GainRaw.value)
+                print("gain set to 16")
+                self.action_on_start_image_acquisition()
+                print("acq started")
+                #self.is_enabled_on_start_image_acquisition()
             elif value == '64':
                 self.action_on_stop_image_acquisition()
                 self.is_enabled_on_stop_image_acquisition()
@@ -1010,7 +1101,7 @@ class ActionSelectFile(Action):
             icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
         )
 
-class ActionTest(Action):
+class ActionSum(Action):
     def __init__(
             self, icon=None, title=None, parent=None, action=None, is_enabled=None
     ):
@@ -1104,6 +1195,16 @@ class ActionRoi(Action):
             icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
         )
 
+class ActionSaveImage(Action):
+    def __init__(
+            self, icon=None, title=None, parent=None, action=None, is_enabled=None
+    ):
+        #
+        super().__init__(
+            icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
+        )
+
+
 class ActionShowAbout(Action):
     def __init__(
             self, icon=None, title=None, parent=None, action=None, is_enabled=None
@@ -1122,3 +1223,4 @@ if __name__ == '__main__':
     harvester = Harvester(vsync=True)
     harvester.show()
     sys.exit(app.exec_())
+
