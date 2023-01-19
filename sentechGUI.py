@@ -22,13 +22,15 @@
 import datetime
 import os
 import sys
-import time
+from time import *
 import numpy as np
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
 from PIL import Image
+
+import socket
 
 # Related third party imports
 from PyQt5.QtCore import QMutexLocker, QMutex, pyqtSignal, QThread
@@ -106,6 +108,8 @@ class Harvester(QMainWindow):
         self._origin = [0, 0]
 
         self._cropped = 0
+
+        self._remoteControl = False
 
         #
         self._signal_update_statistics.connect(self.update_statistics)
@@ -230,20 +234,6 @@ class Harvester(QMainWindow):
         button_select_file.toggle()
         observers.append(button_select_file)
 
-        # # TESTTESTTEST
-        # button_test = ActionTest(
-        #     icon='open_file.png', title='Select file', parent=self,
-        #     action=self.action_on_test,
-        #     is_enabled=self.is_enabled_on_test
-        # )
-        # shortcut_key = 'Ctrl+o'
-        # button_test.setToolTip(
-        #     compose_tooltip('Open a CTI file to load', shortcut_key)
-        # )
-        # button_test.setShortcut(shortcut_key)
-        # button_test.toggle()
-        # observers.append(button_test)
-
         # UPDATE LIST
         button_update = ActionUpdateList(
             icon='update.png', title='Update device list', parent=self,
@@ -349,8 +339,6 @@ class Harvester(QMainWindow):
         button_dev_attribute.toggle()
         observers.append(button_dev_attribute)
 
-        # Create widgets to add:
-
         # EXPOSITION
         ###self._widget_device_list2 = QLineEdit(self)
         self._widget_device_list3 = QSpinBox(self)
@@ -453,32 +441,13 @@ class Harvester(QMainWindow):
         group_display.addWidget(self._widget_display_rates)
         observers.append(self._widget_display_rates)
 
-        # # TEXT FIELD
-        # self._textfield = GainList(self)
-        # self._textfield.setSizeAdjustPolicy(
-        #     QComboBox.AdjustToContents
-        # )
-        # shortcut_key = 'Ctrl+Shift+d'
-        # shortcut = QShortcut(QKeySequence(shortcut_key), self)
-
-        # def show_popup():
-        #     self._widget_device_list.showPopup()
-
-        # shortcut.activated.connect(show_popup)
-        # self._widget_device_list.setToolTip(
-        #     compose_tooltip('Select a device to connect', shortcut_key)
-        # )
-        # observers.append(self._textfield)
-        # group_display.addWidget(self._widget_device_list)
-
-
         # ROI (REGION OF INTEREST)
         button_roi = ActionRoi(
             icon='crop.png', title='Crop image', parent=self,
             action=self.action_on_roi,
             is_enabled=self.is_enabled_on_roi
         )
-        shortcut_key = 'Ctrl+j'
+        shortcut_key = 'Ctrl+a'
         button_roi.setToolTip(
             compose_tooltip('Crop image', shortcut_key)
         )
@@ -502,18 +471,31 @@ class Harvester(QMainWindow):
 
         # SAVE IMAGE
         button_save = ActionSaveImage(
-            icon='save.png', title='Analysis', parent=self,
+            icon='save.png', title='Save image', parent=self,
             action=self.action_on_save_image,
             is_enabled=self.is_enabled_on_save_image
         )
-        shortcut_key = 'Ctrl+j'
+        shortcut_key = 'Ctrl+s'
         button_save.setToolTip(
-            compose_tooltip('Analysis', shortcut_key)
+            compose_tooltip('Save image', shortcut_key)
         )
         button_save.setShortcut(shortcut_key)
         button_save.toggle()
         observers.append(button_save)
 
+        # CHANGE TO REMOTE CONTROL + BLOCK ALL GUI FUNCTIONS
+        button_remote = ActionRemote(
+            icon='remote.png', title='Remote control', parent=self,
+            action=self.action_on_remote,
+            is_enabled=self.is_enabled_on_remote
+        )
+        shortcut_key = 'Ctrl+r'
+        button_remote.setToolTip(
+            compose_tooltip('Remote control', shortcut_key)
+        )
+        button_remote.setShortcut(shortcut_key)
+        button_remote.toggle()
+        observers.append(button_remote)
 
         # ABOUT HARVESTER
         self._widget_about = About(self)
@@ -540,6 +522,7 @@ class Harvester(QMainWindow):
         button_select_file.add_observer(button_roi)
         button_select_file.add_observer(button_sum)
         button_select_file.add_observer(button_save)
+        button_select_file.add_observer(button_remote)
         button_select_file.add_observer(self._widget_device_list)
         button_select_file.add_observer(self._widget_device_list2)
         button_select_file.add_observer(self._widget_device_list3)
@@ -552,6 +535,7 @@ class Harvester(QMainWindow):
         button_update.add_observer(button_roi)
         button_update.add_observer(button_sum)
         button_update.add_observer(button_save)
+        button_update.add_observer(button_remote)
 
         #
         button_connect.add_observer(button_select_file)
@@ -567,6 +551,7 @@ class Harvester(QMainWindow):
         button_connect.add_observer(button_roi)
         button_connect.add_observer(button_sum)
         button_connect.add_observer(button_save)
+        button_connect.add_observer(button_remote)
 
         #
         button_disconnect.add_observer(button_select_file)
@@ -582,18 +567,23 @@ class Harvester(QMainWindow):
         button_disconnect.add_observer(button_roi)
         button_disconnect.add_observer(button_sum)
         button_disconnect.add_observer(button_save)
-
+        button_disconnect.add_observer(button_remote)
 
         #
-        # button_test.add_observer(button_update)
-        # button_test.add_observer(button_connect)
-        # button_test.add_observer(button_disconnect)
-        # button_test.add_observer(button_dev_attribute)
-        # button_test.add_observer(button_start_image_acquisition)
-        # button_test.add_observer(button_toggle_drawing)
-        # button_test.add_observer(button_stop_image_acquisition)
-        # button_test.add_observer(self._widget_device_list)
-        # button_test.add_observer(self._widget_device_list2)
+        button_remote.add_observer(button_select_file)
+        button_remote.add_observer(button_update)
+        button_remote.add_observer(button_connect)
+        button_remote.add_observer(button_disconnect)
+        button_remote.add_observer(button_dev_attribute)
+        button_remote.add_observer(button_start_image_acquisition)
+        button_remote.add_observer(button_toggle_drawing)
+        button_remote.add_observer(button_stop_image_acquisition)
+        button_remote.add_observer(self._widget_device_list)
+        button_remote.add_observer(self._widget_device_list2)
+        button_remote.add_observer(self._widget_device_list3)
+        button_remote.add_observer(button_roi)
+        button_remote.add_observer(button_sum)
+        button_remote.add_observer(button_save)
 
         #
         button_start_image_acquisition.add_observer(button_toggle_drawing)
@@ -611,7 +601,6 @@ class Harvester(QMainWindow):
 
         #
         group_gentl_info.addAction(button_select_file)
-        # group_gentl_info.addAction(button_test)
         group_gentl_info.addAction(button_update)
 
         #
@@ -628,6 +617,7 @@ class Harvester(QMainWindow):
         group_device.addAction(button_dev_attribute)
 
         #
+        group_help.addAction(button_remote)
         group_help.addAction(button_about)
 
         # Connect handler functions:
@@ -723,6 +713,7 @@ class Harvester(QMainWindow):
         self.ia.signal_stop_image_acquisition = self._signal_stop_image_acquisition
         self.ia.remote_device.node_map.ExposureTimeRaw.value = 16000
         self._widget_device_list3.setValue(16000)
+        #self._widget_device_list2.setCurrentIndex(self.ia.remote_device.node_map.GainRaw.value)
         self.ia.remote_device.node_map.OffsetX.value = 0
         self.ia.remote_device.node_map.OffsetY.value = 0
         self.ia.remote_device.node_map.Width.value = 1280
@@ -731,7 +722,7 @@ class Harvester(QMainWindow):
         self._heigth = int(self.ia.remote_device.node_map.Height.value)
         self.standardWidth = self._width
         self.standardHeigth = self._heigth
-        print(dir(self.ia.remote_device.node_map))
+        #print(dir(self.ia.remote_device.node_map))
         print("BinningHorizontal ", self.ia.remote_device.node_map.BinningVertical.value)
         print(self._width)
         print(self._heigth)
@@ -753,7 +744,7 @@ class Harvester(QMainWindow):
     def is_enabled_on_connect(self):
         enable = False
         if self.cti_files:
-            if self.harvester_core.device_info_list:
+            if self.harvester_core.device_info_list and (self._remoteControl == False):
                 if self.ia is None:
                     enable = True
         return enable
@@ -782,7 +773,7 @@ class Harvester(QMainWindow):
     def is_enabled_on_disconnect(self):
         enable = False
         if self.cti_files:
-            if self.ia:
+            if self.ia and (self._remoteControl == False):
                 enable = True
         return enable
 
@@ -830,11 +821,17 @@ class Harvester(QMainWindow):
     def is_enabled_on_sum(self):
         enable = False
         if self.cti_files:
-            if self.ia:
+            if self.ia and (self._remoteControl == False):
                 enable = True
         return enable
 
     def action_on_save_image(self):
+        currentDate = strftime('%Y%m%d')
+        print(currentDate)
+        if not os.path.exists(currentDate):
+            print('creating directory')
+            os.mkdir(os.path.join('/sentech/', currentDate))
+
         with self.ia.fetch() as buffer:
             component = buffer.payload.components[0]
 
@@ -843,16 +840,64 @@ class Harvester(QMainWindow):
             )
 
             img = Image.fromarray(_2d)
-            img.save("image.png")
+            print(self._widget_device_list.currentText())
+            deviceName = self._widget_device_list.currentText().split('::', 2)[2].replace(" ", "")
+            print(deviceName)
+            print('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + strftime('%H%M%S', gmtime()) + '.png')
+            img.save('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + strftime('%H%M%S', gmtime()) + '.png')
 
 
     def is_enabled_on_save_image(self):
         enable = False
         if self.cti_files:
-            if self.ia:
+            if self.ia and (self._remoteControl == False):
                 enable = True
         return enable
 
+    def action_on_remote(self):
+        print('before: ', self._remoteControl)
+        s = socket.socket()
+
+        if self._remoteControl == False:
+            self._remoteControl = True
+            self._widget_device_list2.setEnabled(False)
+            self._widget_device_list3.setEnabled(False)
+            self._widget_display_rates.setEnabled(False)
+
+            currentDate = strftime('%Y%m%d')
+            if not os.path.exists(currentDate):
+                print('creating directory')
+                os.mkdir(os.path.join('/sentech/', currentDate))
+            if not os.path.exists(currentDate + '/config.txt'):
+                 f = open(currentDate + '/config.txt', 'w')
+                 f.write('Camera name: ' + self._widget_device_list.currentText().split('::', 2)[2].replace(" ", "") + '\nGain value: ' + str(self.ia.remote_device.node_map.GainRaw.value) + '\nExposition value: ' + str(self.ia.remote_device.node_map.ExposureTimeRaw.value))
+                 f.close()
+
+            address = '127.0.0.1'
+            port = 123
+
+            try:
+                s.connect((address, port))
+                print('socket created')
+                s.recv(1024).decode()
+            except socket.error as err:
+                print('socket creation failed')
+
+        else:
+            self._remoteControl = False
+            self._widget_device_list2.setEnabled(True)
+            self._widget_device_list3.setEnabled(True)
+            self._widget_display_rates.setEnabled(True)
+            s.close()
+            print('socket closed')
+
+        print('after: ', self._remoteControl)
+
+    def is_enabled_on_remote(self):
+        enable = False
+        if self.cti_files:
+            enable = True
+        return enable
 
     def _set_exposition(self, value):
         try:
@@ -941,7 +986,7 @@ class Harvester(QMainWindow):
     def is_enabled_on_roi(self):
         enable = False
         if self.cti_files:
-            if self.ia:
+            if self.ia and (self._remoteControl == False):
                 enable = True
         return enable
 
@@ -968,7 +1013,7 @@ class Harvester(QMainWindow):
     def is_enabled_on_start_image_acquisition(self):
         enable = False
         if self.cti_files:
-            if self.ia:
+            if self.ia and (self._remoteControl == False):
                 if not self.ia.is_acquiring() or \
                         self.canvas.is_pausing():
                     enable = True
@@ -992,10 +1037,11 @@ class Harvester(QMainWindow):
 
     def is_enabled_on_stop_image_acquisition(self):
         enable = False
-        if self.cti_files:
-            if self.ia:
-                if self.ia.is_acquiring():
-                    enable = True
+        if self._remoteControl == False:
+            if self.cti_files:
+                if self.ia:
+                    if self.ia.is_acquiring():
+                        enable = True
         return enable
 
     def action_on_show_attribute_controller(self):
@@ -1005,7 +1051,7 @@ class Harvester(QMainWindow):
 
     def is_enabled_on_show_attribute_controller(self):
         enable = False
-        if self.cti_files:
+        if self.cti_files and (self._remoteControl == False):
             if self.ia is not None:
                 enable = True
         return enable
@@ -1016,7 +1062,7 @@ class Harvester(QMainWindow):
     def is_enabled_on_toggle_drawing(self):
         enable = False
         if self.cti_files:
-            if self.ia:
+            if self.ia and (self._remoteControl == False):
                 if self.ia.is_acquiring():
                     enable = True
         return enable
@@ -1204,6 +1250,14 @@ class ActionSaveImage(Action):
             icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
         )
 
+class ActionRemote(Action):
+    def __init__(
+            self, icon=None, title=None, parent=None, action=None, is_enabled=None
+    ):
+        #
+        super().__init__(
+            icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
+        )
 
 class ActionShowAbout(Action):
     def __init__(

@@ -88,6 +88,9 @@ class CanvasBase(app.Canvas):
         self._origin = [0, 0]
 
         #
+        self._click_counter = 0
+
+        #
         self._display_rate = display_rate
         self._timer = app.Timer(
             1. / self._display_rate, connect=self.update, start=True
@@ -217,35 +220,22 @@ class CanvasBase(app.Canvas):
         ########
         self._origin = event.pos
         print(self._origin)
-        print(self._width)
-        print(self._height)
-        self._x_click = self._origin[0]
-        self._y_click = self._origin[1]
-        self._origin[0] = 0
-        self._origin[1] = 0
-        print(self._x_click)
-        print(self._y_click)
+        if self._click_counter == 0:
+            self._x_click = self._origin[0]
+            self._y_click = self._origin[1]
+#            self._origin[0] = 0
+#            self._origin[1] = 0
+            self._click_counter += 1
+        elif self._click_counter == 1:
+            self._x_release = self._origin[0]
+            self._y_release = self._origin[1]
+#            self._origin[0] = 0
+#            self._origin[1] = 0
+            self._click_counter -= 1
+
 
     def on_mouse_release(self, event):
-        ###
         self._is_dragging = False
-        # self._origin2 = event.pos
-        # print(self._origin2)
-        # self._x_release = self._coordinate[0]
-        # self._y_release = self._coordinate[1]
-        # self._coordinate[0] = 0
-        # self._coordinate[1] = 0
-        # print(self._x_release)
-        # print(self._y_release)
-        ########
-        self._origin2 = event.pos
-        print(self._origin2)
-        self._x_release = self._origin2[0]
-        self._y_release = self._origin2[1]
-        self._origin2[0] = 0
-        self._origin2[1] = 0
-        print(self._x_release)
-        print(self._y_release)
 
     def on_mouse_move(self, event):
         raise NotImplementedError
@@ -501,11 +491,10 @@ class Canvas2D(CanvasBase):
 
     def on_mouse_move(self, event):
         if self._is_dragging:
-            # adjustment = 2. if is_running_on_macos() else 1.
-            # ratio = self._magnification * adjustment
-            # delta = event.pos - self._origin
-            # self._origin = event.pos
-            # self._coordinate[0] -= (delta[0] * ratio)
-            # self._coordinate[1] += (delta[1] * ratio)
-            # self.apply_magnification()
-            pass
+            adjustment = 2. if is_running_on_macos() else 1.
+            ratio = self._magnification * adjustment
+            delta = event.pos - self._origin
+            self._origin = event.pos
+            self._coordinate[0] -= (delta[0] * ratio)
+            self._coordinate[1] += (delta[1] * ratio)
+            self.apply_magnification()
