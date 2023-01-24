@@ -91,6 +91,9 @@ class CanvasBase(app.Canvas):
         self._click_counter = 0
 
         #
+        self._totalClicks = 0
+
+        #
         self._display_rate = display_rate
         self._timer = app.Timer(
             1. / self._display_rate, connect=self.update, start=True
@@ -220,18 +223,30 @@ class CanvasBase(app.Canvas):
         ########
         self._origin = event.pos
         print(self._origin)
+        self._totalClicks += 1
+        print('self._totalClicks: ', self._totalClicks)
         if self._click_counter == 0:
             self._x_click = self._origin[0]
             self._y_click = self._origin[1]
+            print('self._x_click, self._y_click: ', self._x_click, self._y_click)
 #            self._origin[0] = 0
 #            self._origin[1] = 0
             self._click_counter += 1
         elif self._click_counter == 1:
             self._x_release = self._origin[0]
             self._y_release = self._origin[1]
+            print('self._x_release, self._y_release: ', self._x_release, self._y_release)
 #            self._origin[0] = 0
 #            self._origin[1] = 0
             self._click_counter -= 1
+#        if (self._totalClicks % 2 != 0) and self._totalClicks != 1:
+#            print('totalClick case')
+#            xTemp = self._x_click
+#            yTemp = self._y_click
+#            self._x_click = self._x_release
+#            self._y_click = self._y_release
+#            self._x_release = xTemp
+#            self._y_release = yTemp
 
 
     def on_mouse_release(self, event):
@@ -365,6 +380,9 @@ class Canvas2D(CanvasBase):
         #
         self._coordinate = [0, 0]
 
+        #
+        self._xDelta = 0
+        self._yDelta = 0
 
         #
         self._program['texture'] = np.zeros(
@@ -452,11 +470,15 @@ class Canvas2D(CanvasBase):
     def apply_magnification(self):
         #
         canvas_w, canvas_h = self.physical_size
+        print('canvas_w, canvas_h: ', canvas_w, canvas_h)
         gloo.set_viewport(0, 0, canvas_w, canvas_h)
 
         #
         ratio = self._magnification
         w, h = self._width, self._height
+        print('w, h: ', w, h)
+
+        print('self._magnification: ', self._magnification)
 
         self._program['u_projection'] = ortho(
             self._coordinate[0],
@@ -467,6 +489,10 @@ class Canvas2D(CanvasBase):
         )
 
         x, y = int((canvas_w * ratio - w) / 2), int((canvas_h * ratio - h) / 2)  # centering x & y
+        print('x, y: ', x, y)
+
+        self._xDelta = x / self._magnification
+        self._yDelta = y / self._magnification
 
         #
         self._data['a_position'] = np.array(
@@ -484,6 +510,7 @@ class Canvas2D(CanvasBase):
         translate = min(power * stride, translate)
         translate = max(-power * stride, translate)
         self._translate = translate
+        print('translate: ', self._translate)
         self._magnification = 2 ** -(self._translate / stride)
         if self._latest_translate != self._translate:
             self.apply_magnification()

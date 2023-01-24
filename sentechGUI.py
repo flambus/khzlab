@@ -811,10 +811,12 @@ class Harvester(QMainWindow):
                 component.height, component.width
             )
 
-            lineSumHorizontal = _2d.sum(axis=1)
+            lineSumHorizontal = _2d.sum(axis=1).tolist()
             lineSumVertical = _2d.sum(axis=0)
             
-            plt.hist(lineSumVertical, density=True, bins=int(lineSumVertical.shape[0] / 8))
+            print(sorted(lineSumHorizontal))
+            plt.hist(lineSumHorizontal, bins=20)
+            #plt.hist(lineSumVertical, density=True, bins=20)
             plt.show()
 
 
@@ -919,8 +921,14 @@ class Harvester(QMainWindow):
         return enable
 
     def action_on_roi(self):
-        if self._cropped == 0:
+        if self._widget_canvas._totalClicks == 0 or ((self._widget_canvas._totalClicks % 2) != 0):
+            pass
+        elif self._cropped == 0 and self._widget_canvas._totalClicks != 0:
             self._cropped += 1
+            print(self._cropped)
+            self._widget_canvas._x_click = int(self._widget_canvas._x_click - self._widget_canvas._xDelta)
+            self._widget_canvas._y_click = int(self._widget_canvas._y_click - self._widget_canvas._yDelta)
+            print('real x, real y:', self._widget_canvas._x_click, self._widget_canvas._y_click)
             if self._widget_canvas._x_click % 8 != 0:
                 if (self._widget_canvas._x_click - ((self._widget_canvas._x_click // 8) * 8)) <= np.abs((self._widget_canvas._x_click - (((self._widget_canvas._x_click // 8) * 8) + 8))):
                     x1 = int((self._widget_canvas._x_click // 8) * 8)
@@ -936,7 +944,10 @@ class Harvester(QMainWindow):
                     y1 = int((((self._widget_canvas._y_click // 8) * 8) + 8))
             else:
                 y1 = int(self._widget_canvas._x_click)
-
+            
+            self._widget_canvas._x_release = int(self._widget_canvas._x_release - self._widget_canvas._xDelta)
+            self._widget_canvas._y_release = int(self._widget_canvas._y_release - self._widget_canvas._yDelta)
+            
             x2 = int(self._widget_canvas._x_release - x1)
             y2 = int(self._widget_canvas._y_release - y1)
 
@@ -961,6 +972,23 @@ class Harvester(QMainWindow):
             print('x2: ', x2)
             print('y2: ', y2)
 
+            if x1 > x2 and y1 < y2:
+                xTemp = x1
+                yTemp = y1
+                x1 = x2
+                x2 = xTemp
+                y1 = y2
+                y2 = yTemp
+            elif x1 < x2 and y1 > y2:
+                yTemp = y1
+                y1 = y2
+                y2 = yTemp
+            elif x1 > x2 and y1 > y2:
+                xTemp = x1
+                x1 = x2
+                x2 = xTemp
+                
+
             self.action_on_stop_image_acquisition()
             self.is_enabled_on_stop_image_acquisition()
             self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - x1
@@ -981,6 +1009,10 @@ class Harvester(QMainWindow):
             self.action_on_start_image_acquisition()
             self.is_enabled_on_start_image_acquisition()
             self._cropped -= 1
+            self._widget_canvas._totalClicks = 0
+            self._widget_canvas._x_click += self._widget_canvas._xDelta
+            self._widget_canvas._y_click += self._widget_canvas._yDelta
+            print(self._cropped)
 
 
     def is_enabled_on_roi(self):
