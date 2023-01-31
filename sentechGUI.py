@@ -28,6 +28,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
+import threading
+
 from PIL import Image
 
 import socket
@@ -876,13 +878,21 @@ class Harvester(QMainWindow):
                  f.close()
 
             address = '127.0.0.1'
-            port = 123
+            port = 12345
 
             try:
                 s.connect((address, port))
                 print('socket created')
-                s.recv(1024).decode()
-            except socket.error as err:
+                chunks = []
+                while True:
+                    signal = s.recv(1024).decode()
+                    t1 = threading.Thread(target=self.action_on_save_image)
+                    t1.start()
+                    if not signal:
+                        break
+                    chunks.append(signal)
+                
+            except ConnectionRefusedError as err:
                 print('socket creation failed')
 
         else:
@@ -974,20 +984,22 @@ class Harvester(QMainWindow):
 
             if x1 > x2 and y1 < y2:
                 xTemp = x1
-                yTemp = y1
                 x1 = x2
                 x2 = xTemp
-                y1 = y2
-                y2 = yTemp
+                yDistance = y1 - y2
+                y1 = y1 - yDistance
+                y2 = y2 + yDistance
             elif x1 < x2 and y1 > y2:
-                yTemp = y1
-                y1 = y2
-                y2 = yTemp
+                yDistance = y1 - y2
+                y1 = y1 - yDistance
+                y2 = y2 + yDistance
             elif x1 > x2 and y1 > y2:
                 xTemp = x1
+                yTemp = y1
                 x1 = x2
                 x2 = xTemp
-                
+                y1 = y2
+                y2 = yTemp
 
             self.action_on_stop_image_acquisition()
             self.is_enabled_on_stop_image_acquisition()
@@ -1303,10 +1315,13 @@ class ActionShowAbout(Action):
         #
         self._is_model = False
 
-
-if __name__ == '__main__':
+def mainGUI():
     app = QApplication(sys.argv)
     harvester = Harvester(vsync=True)
     harvester.show()
     sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    t1 = threading.Thread(target=mainGUI)
+    t1.start()
 
