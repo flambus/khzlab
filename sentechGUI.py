@@ -28,7 +28,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
-import threading
+#import threading
 
 from PIL import Image
 
@@ -814,11 +814,10 @@ class Harvester(QMainWindow):
             )
 
             lineSumHorizontal = _2d.sum(axis=1).tolist()
-            lineSumVertical = _2d.sum(axis=0)
-            
-            print(sorted(lineSumHorizontal))
-            plt.hist(lineSumHorizontal, bins=20)
-            #plt.hist(lineSumVertical, density=True, bins=20)
+            lineSumVertical = _2d.sum(axis=0).tolist()
+
+            plt.plot(lineSumVertical, color='red')
+            plt.plot(lineSumHorizontal, color='green')
             plt.show()
 
 
@@ -883,15 +882,19 @@ class Harvester(QMainWindow):
             try:
                 s.connect((address, port))
                 print('socket created')
-                chunks = []
                 while True:
                     signal = s.recv(1024).decode()
-                    t1 = threading.Thread(target=self.action_on_save_image)
-                    t1.start()
-                    if not signal:
+                    if signal == 781:
+                        #t1 = threading.Thread(target=self.action_on_save_image)
+                        #t1.start()
+                        self.action_on_save_image
+                    elif not signal:
+                        s.close()
+                        print('socket closed (server closed)')
                         break
-                    chunks.append(signal)
-                
+                    else:
+                        pass
+
             except ConnectionRefusedError as err:
                 print('socket creation failed')
 
@@ -919,7 +922,7 @@ class Harvester(QMainWindow):
             # self.is_enabled_on_start_image_acquisition()
         except AttributeError:
             pass
-    
+
     def action_on_update_list(self):
         self.harvester_core.update_device_info_list()
 
@@ -953,11 +956,14 @@ class Harvester(QMainWindow):
                 else:
                     y1 = int((((self._widget_canvas._y_click // 8) * 8) + 8))
             else:
-                y1 = int(self._widget_canvas._x_click)
-            
-            self._widget_canvas._x_release = int(self._widget_canvas._x_release - self._widget_canvas._xDelta)
-            self._widget_canvas._y_release = int(self._widget_canvas._y_release - self._widget_canvas._yDelta)
-            
+                y1 = int(self._widget_canvas._y_click)
+
+            print('updated x1, y1: ', x1, y1)
+
+            self._widget_canvas._x_release = int(self._widget_canvas._x_release + self._widget_canvas._xDelta)
+            self._widget_canvas._y_release = int(self._widget_canvas._y_release + self._widget_canvas._yDelta)
+            print('real x release, real y release:', self._widget_canvas._x_release, self._widget_canvas._y_release)
+
             x2 = int(self._widget_canvas._x_release - x1)
             y2 = int(self._widget_canvas._y_release - y1)
 
@@ -977,6 +983,8 @@ class Harvester(QMainWindow):
             else:
                 y2 = int(y2)
 
+            print('updated x2, y2: ', x2, y2)
+
             print('x1: ', x1)
             print('y1: ', y1)
             print('x2: ', x2)
@@ -993,22 +1001,30 @@ class Harvester(QMainWindow):
                 yDistance = y1 - y2
                 y1 = y1 - yDistance
                 y2 = y2 + yDistance
-            elif x1 > x2 and y1 > y2:
-                xTemp = x1
-                yTemp = y1
-                x1 = x2
-                x2 = xTemp
-                y1 = y2
-                y2 = yTemp
+#            elif x1 > x2 and y1 > y2:
+#                xTemp = x1
+#                yTemp = y1
+#                x1 = x2
+#                x2 = xTemp
+#                y1 = y2
+#                y2 = yTemp
 
             self.action_on_stop_image_acquisition()
             self.is_enabled_on_stop_image_acquisition()
-            self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - x1
-            self.ia.remote_device.node_map.Height.value = self.ia.remote_device.node_map.Height.value - y1
+            print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
+            print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
+            self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - (self.ia.remote_device.node_map.Width.value - (x1 + x2))
+            self.ia.remote_device.node_map.Height.value = self.ia.remote_device.node_map.Height.value - (self.ia.remote_device.node_map.Height.value - (y1 + y2)) + 32
+            print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
+            print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
             self.ia.remote_device.node_map.OffsetX.value = x1
-            self.ia.remote_device.node_map.OffsetY.value = y1
+            self.ia.remote_device.node_map.OffsetY.value = y1 + 32
+            print('self.ia.remote_device.node_map.OffsetX.value: ', self.ia.remote_device.node_map.OffsetX.value)
+            print('self.ia.remote_device.node_map.OffsetY.value: ', self.ia.remote_device.node_map.OffsetY.value)
             self.ia.remote_device.node_map.Width.value = x2
             self.ia.remote_device.node_map.Height.value = y2
+            print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
+            print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
             self.action_on_start_image_acquisition()
             self.is_enabled_on_start_image_acquisition()
         else:
@@ -1114,7 +1130,7 @@ class Harvester(QMainWindow):
     def action_on_show_about(self):
         self.about.setModal(False)
         self.about.show()
-    
+
     def _set_gain(self, value):
         try:
             if value == '1':
@@ -1315,13 +1331,18 @@ class ActionShowAbout(Action):
         #
         self._is_model = False
 
-def mainGUI():
+#def mainGUI():
+#    app = QApplication(sys.argv)
+#    harvester = Harvester(vsync=True)
+#    harvester.show()
+#    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+   # t1 = threading.Thread(target=mainGUI)
+   # t1.start()
     app = QApplication(sys.argv)
     harvester = Harvester(vsync=True)
     harvester.show()
     sys.exit(app.exec_())
 
-if __name__ == '__main__':
-    t1 = threading.Thread(target=mainGUI)
-    t1.start()
 
