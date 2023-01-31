@@ -494,6 +494,11 @@ class Canvas2D(CanvasBase):
         self._xDelta = x / self._magnification
         self._yDelta = y / self._magnification
 
+        if self._magnification == 1.0:
+            self._yDelta = 0
+
+        print('xDelta, yDelta', self._xDelta, self._yDelta)
+
         #
         self._data['a_position'] = np.array(
             [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]
@@ -525,3 +530,4 @@ class Canvas2D(CanvasBase):
             self._coordinate[0] -= (delta[0] * ratio)
             self._coordinate[1] += (delta[1] * ratio)
             self.apply_magnification()
+
