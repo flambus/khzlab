@@ -113,6 +113,8 @@ class Harvester(QMainWindow):
 
         self._remoteControl = False
 
+        self._plotting = 0
+
         #
         self._signal_update_statistics.connect(self.update_statistics)
         self._signal_stop_image_acquisition.connect(self._stop_image_acquisition)
@@ -781,23 +783,25 @@ class Harvester(QMainWindow):
 
     def action_on_select_file(self):
         # Show a dialog and update the CTI file list.
-        dialog = QFileDialog(self)
-        dialog.setWindowTitle('Select a CTI file to load')
-        dialog.setNameFilter('CTI files (*.cti)')
-        dialog.setFileMode(QFileDialog.ExistingFile)
+        # dialog = QFileDialog(self)
+        # dialog.setWindowTitle('Select a CTI file to load')
+        # dialog.setNameFilter('CTI files (*.cti)')
+        # dialog.setFileMode(QFileDialog.ExistingFile)
 
-        if dialog.exec_() == QDialog.Accepted:
-            #
-            file_path = dialog.selectedFiles()[0]
+        # if dialog.exec_() == QDialog.Accepted:
+        #
+        # file_path = dialog.selectedFiles()[0]
+        
+        file_path = '/opt/sentech/lib/libstgentl.cti'
 
-            #
-            self.harvester_core.reset()
+        #
+        self.harvester_core.reset()
 
-            # Update the path to the target GenTL Producer.
-            self.harvester_core.add_file(file_path)
+        # Update the path to the target GenTL Producer.
+        self.harvester_core.add_file(file_path)
 
-            # Update the device list.
-            self.harvester_core.update()
+        # Update the device list.
+        self.harvester_core.update()
 
     def is_enabled_on_select_file(self):
         enable = False
@@ -805,20 +809,38 @@ class Harvester(QMainWindow):
             enable = True
         return enable
 
+    def plot(self):
+        timeX = []
+        pixelSums = []
+        timeStep = 0
+        while self._plotting == 1:
+            timeX.append(timeStep)
+            with self.ia.fetch() as buffer:
+                component = buffer.payload.components[0]
+
+                _2d = component.data.reshape(
+                    component.height, component.width
+                )
+
+                lineSumHorizontal = _2d.sum(axis=1).tolist()
+                lineSumVertical = _2d.sum(axis=0).tolist()
+
+                imageSum = lineSumHorizontal.sum(axis=0).tolist()
+                pixelSums.append(imageSum)
+
+                plt.plot(timeX, pixelSums)
+
+                plt.plot(lineSumVertical, color='red')
+                plt.plot(lineSumHorizontal, color='green')
+                plt.show()
+            timeStep += 1
+
     def action_on_sum(self):
-        with self.ia.fetch() as buffer:
-            component = buffer.payload.components[0]
-
-            _2d = component.data.reshape(
-                component.height, component.width
-            )
-
-            lineSumHorizontal = _2d.sum(axis=1).tolist()
-            lineSumVertical = _2d.sum(axis=0).tolist()
-
-            plt.plot(lineSumVertical, color='red')
-            plt.plot(lineSumHorizontal, color='green')
-            plt.show()
+        if self._plotting == 0:
+            self._plotting = 1
+            self.plot()
+        else:
+            self._plotting = 0
 
 
     def is_enabled_on_sum(self):
@@ -1344,5 +1366,3 @@ if __name__ == '__main__':
     harvester = Harvester(vsync=True)
     harvester.show()
     sys.exit(app.exec_())
-
-
