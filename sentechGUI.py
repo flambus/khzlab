@@ -22,9 +22,11 @@
 import datetime
 import os
 import sys
-from time import *
+#from time import *
+import time
 import numpy as np
-
+import matplotlib
+#matplotlib.use("Qt5Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
@@ -33,6 +35,7 @@ from matplotlib.colors import ListedColormap
 from PIL import Image
 
 import socket
+from custom_toolbar_button import tool
 
 # Related third party imports
 from PyQt5.QtCore import QMutexLocker, QMutex, pyqtSignal, QThread
@@ -115,6 +118,8 @@ class Harvester(QMainWindow):
 
         self._plotting = 0
 
+        self._acquisitionRunning = False
+
         #
         self._signal_update_statistics.connect(self.update_statistics)
         self._signal_stop_image_acquisition.connect(self._stop_image_acquisition)
@@ -126,6 +131,18 @@ class Harvester(QMainWindow):
 
         #
         self._initialize_widgets(1200, 600)
+
+        file_path = '/opt/sentech/lib/libstgentl.cti'
+
+        #
+        self.harvester_core.reset()
+
+        # Update the path to the target GenTL Producer.
+        self.harvester_core.add_file(file_path)
+
+        # Update the device list.
+        self.harvester_core.update()
+
 
         #
         for o in self._observer_widgets:
@@ -444,6 +461,7 @@ class Harvester(QMainWindow):
         self._widget_display_rates.setEnabled(True)
         group_display.addWidget(self._widget_display_rates)
         observers.append(self._widget_display_rates)
+        self._widget_display_rates.currentTextChanged.connect(self.onDisplayRateChanged)
 
         # ROI (REGION OF INTEREST)
         button_roi = ActionRoi(
@@ -592,6 +610,9 @@ class Harvester(QMainWindow):
         #
         button_start_image_acquisition.add_observer(button_toggle_drawing)
         button_start_image_acquisition.add_observer(button_stop_image_acquisition)
+        button_start_image_acquisition.add_observer(button_save)
+        button_start_image_acquisition.add_observer(button_sum)
+        button_start_image_acquisition.add_observer(button_roi)
 
         #
         button_toggle_drawing.add_observer(button_start_image_acquisition)
@@ -600,12 +621,31 @@ class Harvester(QMainWindow):
         #
         button_stop_image_acquisition.add_observer(button_start_image_acquisition)
         button_stop_image_acquisition.add_observer(button_toggle_drawing)
+        button_stop_image_acquisition.add_observer(button_save)
+        button_stop_image_acquisition.add_observer(button_sum)
+        button_stop_image_acquisition.add_observer(button_roi)
+
+        #
+        button_save.add_observer(button_start_image_acquisition)
+        button_save.add_observer(button_stop_image_acquisition)
+        button_save.add_observer(button_select_file)
+        button_save.add_observer(button_update)
+        button_save.add_observer(button_connect)
+        button_save.add_observer(button_disconnect)
+        button_save.add_observer(button_dev_attribute)
+        button_save.add_observer(button_toggle_drawing)
+        button_save.add_observer(self._widget_device_list)
+        button_save.add_observer(self._widget_device_list2)
+        button_save.add_observer(self._widget_device_list3)
+        button_save.add_observer(button_roi)
+        button_save.add_observer(button_sum)
+
 
         # Add buttons to groups:
 
         #
         group_gentl_info.addAction(button_select_file)
-        group_gentl_info.addAction(button_update)
+#        group_gentl_info.addAction(button_update)
 
         #
         group_connection.addAction(button_connect)
@@ -622,7 +662,7 @@ class Harvester(QMainWindow):
 
         #
         group_help.addAction(button_remote)
-        group_help.addAction(button_about)
+#        group_help.addAction(button_about)
 
         # Connect handler functions:
 
@@ -782,17 +822,16 @@ class Harvester(QMainWindow):
         return enable
 
     def action_on_select_file(self):
-        # Show a dialog and update the CTI file list.
-        # dialog = QFileDialog(self)
-        # dialog.setWindowTitle('Select a CTI file to load')
-        # dialog.setNameFilter('CTI files (*.cti)')
-        # dialog.setFileMode(QFileDialog.ExistingFile)
+        #Show a dialog and update the CTI file list.
+        dialog = QFileDialog(self)
+        dialog.setWindowTitle('Select a CTI file to load')
+        dialog.setNameFilter('CTI files (*.cti)')
+        dialog.setFileMode(QFileDialog.ExistingFile)
 
-        # if dialog.exec_() == QDialog.Accepted:
-        #
-        # file_path = dialog.selectedFiles()[0]
-        
-        file_path = '/opt/sentech/lib/libstgentl.cti'
+        if dialog.exec_() == QDialog.Accepted:
+            file_path = dialog.selectedFiles()[0]
+
+#        file_path = '/opt/sentech/lib/libstgentl.cti'
 
         #
         self.harvester_core.reset()
@@ -809,12 +848,74 @@ class Harvester(QMainWindow):
             enable = True
         return enable
 
+    def onDisplayRateChanged(self):
+        print('self.ia.remote_device.node_map.AcquisitionFrameRate.value before: ', self.ia.remote_device.node_map.AcquisitionFrameRate.value)
+        self.ia.remote_device.node_map.AcquisitionFrameRate.value = int(str.split(self._widget_display_rates.currentText())[0])
+        print('self.ia.remote_device.node_map.AcquisitionFrameRate.value after: ', self.ia.remote_device.node_map.AcquisitionFrameRate.value)
+
     def plot(self):
-        timeX = []
-        pixelSums = []
-        timeStep = 0
-        while self._plotting == 1:
-            timeX.append(timeStep)
+        def callback_func(cls_instance):
+            """
+        cls_instance: NavigationToolbar2TK or NavigationToolbar2QT
+        """
+            def wrapper():
+                cutN = len(self.timeX)
+                self.pixelSums = self.pixelSums[cutN:]
+                self.timeX = self.timeX[cutN:]
+                ax.cla()
+            return wrapper
+
+        icons = tool.Icons('/usr/local/lib/python3.7/dist-packages/harvesters_gui/_private/frontend/image/icon/')
+        tool.TOOLITEMS = [(
+                    "Python Icon",                      # Widget name
+                    "Tooltip Python icon",              # Tooltip text
+                    icons.icon_path("reset.png"),      # Icon png complete path with name
+                    callback_func                       # Callback function
+                    )]
+
+        # plot current horizontal and vertical sums once first
+#        with self.ia.fetch() as buffer:
+#                component = buffer.payload.components[0]
+#
+#                _2d = component.data.reshape(
+#                    component.height, component.width
+#                )
+#
+#                lineSumHorizontal = _2d.sum(axis=1).tolist()
+#                lineSumVertical = _2d.sum(axis=0).tolist()
+#                plt.ion()
+#                figure, (ax1, ax2) = plt.subplots(1, 2, constrained_layout = True)
+#                #figure.tight_layout(pad=5.0)
+#                #plt.ylabel("summed pixel values (vertical)")
+#                ax1.plot(lineSumVertical, color='red')
+#                ax1.set_xlabel("image width")
+#                ax1.set_ylabel("pixel values summed horizontally")
+#                ax2.plot(lineSumHorizontal, color='green')
+#                ax2.set_xlabel("image height")
+#                ax2.set_ylabel("pixel values summed vertically")
+#                plt.show(block=False)
+
+        def pause(interval):
+            print('pausing')
+            backend = plt.rcParams['backend']
+            if backend in matplotlib.rcsetup.interactive_bk:
+                figManager = matplotlib._pylab_helpers.Gcf.get_active()
+                if figManager is not None:
+                    canvas = figManager.canvas
+                    if canvas.figure.stale:
+                        canvas.draw()
+                    canvas.start_event_loop(interval)
+                    return
+
+        f, ax = plt.subplots(1)
+        print('f.number: ', f.number)
+        figure, (ax1, ax2) = plt.subplots(1, 2, constrained_layout = True)
+        print('figure.number: ', figure.number)
+        self.timeX = []
+        self.pixelSums = []
+        self.timeStep = 0
+        while self._plotting == 1 and (plt.fignum_exists(f.number) or plt.fignum_exists(figure.number)):
+            self.timeX.append(self.timeStep)
             with self.ia.fetch() as buffer:
                 component = buffer.payload.components[0]
 
@@ -824,34 +925,60 @@ class Harvester(QMainWindow):
 
                 lineSumHorizontal = _2d.sum(axis=1).tolist()
                 lineSumVertical = _2d.sum(axis=0).tolist()
+                plt.ion()
+                #figure.tight_layout(pad=5.0)
+                #plt.ylabel("summed pixel values (vertical)")
+                ax1.plot(lineSumVertical, color='red')
+                ax1.set_xlabel("image width")
+                ax1.set_ylabel("pixel values summed horizontally")
+                ax2.plot(lineSumHorizontal, color='green')
+                ax2.set_xlabel("image height")
+                ax2.set_ylabel("pixel values summed vertically")
+                plt.show(block=False)
 
-                imageSum = lineSumHorizontal.sum(axis=0).tolist()
-                pixelSums.append(imageSum)
 
-                plt.plot(timeX, pixelSums)
+                lineSumHorizontal = _2d.sum(axis=1).tolist()
 
-                plt.plot(lineSumVertical, color='red')
-                plt.plot(lineSumHorizontal, color='green')
-                plt.show()
-            timeStep += 1
+                imageSum = np.array(lineSumHorizontal).sum(axis=0).tolist()
+                self.pixelSums.append(imageSum)
+
+                ax.plot(self.timeX, self.pixelSums)
+                ax.set_ylim(ymin=0)
+                ax.set_xlabel("seconds")
+                ax.set_ylabel("pixel values summed")
+
+                plt.show(block=False)
+            self.timeStep += 0.25
+            pause(0.25)
+            ax1.cla()
+            ax2.cla()
+#        if not plt.fignum_exists(f.number):
+#            if not plt.fignum_exists(figure.number):
+#                self.action_on_sum()
 
     def action_on_sum(self):
         if self._plotting == 0:
+            plt.close('all')
             self._plotting = 1
             self.plot()
         else:
             self._plotting = 0
+            plt.close('all')
 
 
     def is_enabled_on_sum(self):
         enable = False
         if self.cti_files:
-            if self.ia and (self._remoteControl == False):
+            if self.ia and (self._remoteControl == False) and self._acquisitionRunning == True:
                 enable = True
         return enable
 
     def action_on_save_image(self):
-        currentDate = strftime('%Y%m%d')
+        #currentDate = strftime('%Y%m%d')
+        month = str(time.localtime()[1])
+        if len(month) == 1:
+            month = month.zfill(2)
+        currentDate = str(time.localtime()[0]) + month + str(time.localtime()[2])
         print(currentDate)
         if not os.path.exists(currentDate):
             print('creating directory')
@@ -866,17 +993,31 @@ class Harvester(QMainWindow):
 
             img = Image.fromarray(_2d)
             print(self._widget_device_list.currentText())
-            deviceName = self._widget_device_list.currentText().split('::', 2)[2].replace(" ", "")
+            #deviceName = self._widget_device_list.currentText().split('::', 2)[2].replace(" ", "")
+            deviceName = self._widget_device_list.currentText().replace(" ", "")
             print(deviceName)
-            print('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + strftime('%H%M%S', gmtime()) + '.png')
-            img.save('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + strftime('%H%M%S', gmtime()) + '.png')
+            #print('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + strftime('%H%M%S', gmtime()) + '.png')
+            #img.save('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + strftime('%H%M%S', gmtime()) + '.png')
+            hour = str(time.localtime()[3])
+            if len(hour) == 1:
+                hour = hour.zfill(2)
+            minute = str(time.localtime()[4])
+            if len(minute) == 1:
+                minute = minute.zfill(2)
+            second = str(time.localtime()[5])
+            if len(second) == 1:
+                second = second.zfill(2)
+            print('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + hour + minute + second + '.png')
+            img.save('/sentech/' + currentDate + '/' + 'cam' + deviceName  + '_' + currentDate + '_' + hour + minute + second + '.png')
 
 
     def is_enabled_on_save_image(self):
         enable = False
-        if self.cti_files:
-            if self.ia and (self._remoteControl == False):
-                enable = True
+        if self._remoteControl == False:
+            if self.cti_files:
+                if self.ia:
+                    if self._acquisitionRunning == True:
+                        enable = True
         return enable
 
     def action_on_remote(self):
@@ -889,7 +1030,12 @@ class Harvester(QMainWindow):
             self._widget_device_list3.setEnabled(False)
             self._widget_display_rates.setEnabled(False)
 
-            currentDate = strftime('%Y%m%d')
+            #currentDate = strftime('%Y%m%d')
+            month = str(time.localtime()[1])
+            if len(month) == 1:
+                month = month.zfill(2)
+            currentDate = str(time.localtime()[0]) + month + str(time.localtime()[2])
+
             if not os.path.exists(currentDate):
                 print('creating directory')
                 os.mkdir(os.path.join('/sentech/', currentDate))
@@ -1032,11 +1178,12 @@ class Harvester(QMainWindow):
 #                y2 = yTemp
 
             self.action_on_stop_image_acquisition()
-            self.is_enabled_on_stop_image_acquisition()
             print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
             print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
-            self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - (self.ia.remote_device.node_map.Width.value - (x1 + x2))
-            self.ia.remote_device.node_map.Height.value = self.ia.remote_device.node_map.Height.value - (self.ia.remote_device.node_map.Height.value - (y1 + y2)) + 32
+#            self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - (self.ia.remote_device.node_map.Width.value - (x1 + x2))
+#            self.ia.remote_device.node_map.Height.value = self.ia.remote_device.node_map.Height.value - (self.ia.remote_device.node_map.Height.value - (y1 + y2)) + 32
+            self.ia.remote_device.node_map.Width.value = x1 + x2
+            self.ia.remote_device.node_map.Height.value = y1 + y2 + 32
             print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
             print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
             self.ia.remote_device.node_map.OffsetX.value = x1
@@ -1048,16 +1195,13 @@ class Harvester(QMainWindow):
             print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
             print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
             self.action_on_start_image_acquisition()
-            self.is_enabled_on_start_image_acquisition()
         else:
             self.action_on_stop_image_acquisition()
-            self.is_enabled_on_stop_image_acquisition()
             self.ia.remote_device.node_map.OffsetX.value = 0
             self.ia.remote_device.node_map.OffsetY.value = 0
             self.ia.remote_device.node_map.Width.value = self._width
             self.ia.remote_device.node_map.Height.value = self._heigth
             self.action_on_start_image_acquisition()
-            self.is_enabled_on_start_image_acquisition()
             self._cropped -= 1
             self._widget_canvas._totalClicks = 0
             self._widget_canvas._x_click += self._widget_canvas._xDelta
@@ -1068,11 +1212,13 @@ class Harvester(QMainWindow):
     def is_enabled_on_roi(self):
         enable = False
         if self.cti_files:
-            if self.ia and (self._remoteControl == False):
+            if self.ia and (self._remoteControl == False) and self._acquisitionRunning == True:
                 enable = True
         return enable
 
     def action_on_start_image_acquisition(self):
+        self._acquisitionRunning = True
+        print('self.acquisitionRunning: ', self._acquisitionRunning)
         if self.ia.is_acquiring():
             print("if")
             # If it's pausing drawing images, just resume it and
@@ -1102,6 +1248,9 @@ class Harvester(QMainWindow):
         return enable
 
     def action_on_stop_image_acquisition(self):
+        self._acquisitionRunning = False
+        self._plotting = 0
+        plt.close('all')
         # Stop statistics measurement:
         self._thread_statistics_measurement.stop()
 
@@ -1208,11 +1357,11 @@ class Harvester(QMainWindow):
         #
         message_statistics = '{0:.1f} fps, elapsed {1}, {2} images, {3:.1f} fps'.format(
             self.ia.statistics.fps,
-            str(datetime.timedelta(
-                seconds=int(self.ia.statistics.elapsed_time_s)
-            )),
+            str(datetime.timedelta(seconds=int(self.ia.statistics.elapsed_time_s))),
+            #int(self.ia.statistics.elapsed_time_s),
             self.ia.statistics.num_images,
-            self.ia.remote_device.node_map.AcquisitionFrameRate.value
+            #self.ia.remote_device.node_map.AcquisitionFrameRate.value
+            int(str.split(self._widget_display_rates.currentText())[0])
         )
         #
         self._signal_update_statistics.emit(
@@ -1366,3 +1515,4 @@ if __name__ == '__main__':
     harvester = Harvester(vsync=True)
     harvester.show()
     sys.exit(app.exec_())
+
