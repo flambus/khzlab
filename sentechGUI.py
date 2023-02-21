@@ -26,22 +26,19 @@ import sys
 import time
 import numpy as np
 import matplotlib
-#matplotlib.use("Qt5Agg")
+matplotlib.use("Qt5agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
-
-#import threading
 
 from PIL import Image
 
 import socket
-from custom_toolbar_button import tool
+#from custom_toolbar_button import tool
 
 # Related third party imports
 from PyQt5.QtCore import QMutexLocker, QMutex, pyqtSignal, QThread
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QMainWindow, QAction, QComboBox, \
-    QDesktopWidget, QFileDialog, QDialog, QShortcut, QApplication, QLineEdit, QSpinBox
+    QDesktopWidget, QFileDialog, QDialog, QShortcut, QApplication, QLineEdit, QSpinBox, QMenu
 
 from genicam.gentl import NotInitializedException, InvalidHandleException, \
     InvalidIdException, ResourceInUseException, \
@@ -116,9 +113,11 @@ class Harvester(QMainWindow):
 
         self._remoteControl = False
 
-        self._plotting = 0
+        self._plotting = False
 
         self._acquisitionRunning = False
+
+        self.ylim = 0
 
         #
         self._signal_update_statistics.connect(self.update_statistics)
@@ -483,13 +482,27 @@ class Harvester(QMainWindow):
             action=self.action_on_sum,
             is_enabled=self.is_enabled_on_sum
         )
-        shortcut_key = 'Ctrl+j'
+        shortcut_key = 'Ctrl+shift+s'
         button_sum.setToolTip(
             compose_tooltip('Analysis', shortcut_key)
         )
         button_sum.setShortcut(shortcut_key)
         button_sum.toggle()
         observers.append(button_sum)
+
+        # PLOT WITH Y-AXIS GOING FROM 0 (OR CURRENT MINIMUM Y-Value)
+        button_yAxisFromZero = ActionYAxisFromZero(
+            icon='yAxis.png', title='Change minimum value on y-Axis', parent=self,
+            action=self.action_on_y_axis_from_zero,
+            is_enabled=self.is_enabled_on_y_axis_from_zero
+        )
+        shortcut_key = 'Ctrl+y'
+        button_yAxisFromZero.setToolTip(
+            compose_tooltip('Analysis', shortcut_key)
+        )
+        button_yAxisFromZero.setShortcut(shortcut_key)
+        button_yAxisFromZero.toggle()
+        observers.append(button_yAxisFromZero)
 
         # SAVE IMAGE
         button_save = ActionSaveImage(
@@ -548,6 +561,7 @@ class Harvester(QMainWindow):
         button_select_file.add_observer(self._widget_device_list)
         button_select_file.add_observer(self._widget_device_list2)
         button_select_file.add_observer(self._widget_device_list3)
+        button_select_file.add_observer(button_yAxisFromZero)
 
         #
         button_update.add_observer(self._widget_device_list)
@@ -558,6 +572,7 @@ class Harvester(QMainWindow):
         button_update.add_observer(button_sum)
         button_update.add_observer(button_save)
         button_update.add_observer(button_remote)
+        button_update.add_observer(button_yAxisFromZero)
 
         #
         button_connect.add_observer(button_select_file)
@@ -574,6 +589,7 @@ class Harvester(QMainWindow):
         button_connect.add_observer(button_sum)
         button_connect.add_observer(button_save)
         button_connect.add_observer(button_remote)
+        button_connect.add_observer(button_yAxisFromZero)
 
         #
         button_disconnect.add_observer(button_select_file)
@@ -590,6 +606,7 @@ class Harvester(QMainWindow):
         button_disconnect.add_observer(button_sum)
         button_disconnect.add_observer(button_save)
         button_disconnect.add_observer(button_remote)
+        button_disconnect.add_observer(button_yAxisFromZero)
 
         #
         button_remote.add_observer(button_select_file)
@@ -606,6 +623,7 @@ class Harvester(QMainWindow):
         button_remote.add_observer(button_roi)
         button_remote.add_observer(button_sum)
         button_remote.add_observer(button_save)
+        button_remote.add_observer(button_yAxisFromZero)
 
         #
         button_start_image_acquisition.add_observer(button_toggle_drawing)
@@ -613,6 +631,7 @@ class Harvester(QMainWindow):
         button_start_image_acquisition.add_observer(button_save)
         button_start_image_acquisition.add_observer(button_sum)
         button_start_image_acquisition.add_observer(button_roi)
+        button_start_image_acquisition.add_observer(button_yAxisFromZero)
 
         #
         button_toggle_drawing.add_observer(button_start_image_acquisition)
@@ -624,6 +643,7 @@ class Harvester(QMainWindow):
         button_stop_image_acquisition.add_observer(button_save)
         button_stop_image_acquisition.add_observer(button_sum)
         button_stop_image_acquisition.add_observer(button_roi)
+        button_stop_image_acquisition.add_observer(button_yAxisFromZero)
 
         #
         button_save.add_observer(button_start_image_acquisition)
@@ -639,7 +659,35 @@ class Harvester(QMainWindow):
         button_save.add_observer(self._widget_device_list3)
         button_save.add_observer(button_roi)
         button_save.add_observer(button_sum)
+        button_save.add_observer(button_yAxisFromZero)
 
+        button_yAxisFromZero.add_observer(button_start_image_acquisition)
+        button_yAxisFromZero.add_observer(button_stop_image_acquisition)
+        button_yAxisFromZero.add_observer(button_select_file)
+        button_yAxisFromZero.add_observer(button_update)
+        button_yAxisFromZero.add_observer(button_connect)
+        button_yAxisFromZero.add_observer(button_disconnect)
+        button_yAxisFromZero.add_observer(button_dev_attribute)
+        button_yAxisFromZero.add_observer(button_toggle_drawing)
+        button_yAxisFromZero.add_observer(self._widget_device_list)
+        button_yAxisFromZero.add_observer(self._widget_device_list2)
+        button_yAxisFromZero.add_observer(self._widget_device_list3)
+        button_yAxisFromZero.add_observer(button_roi)
+        button_yAxisFromZero.add_observer(button_sum)
+
+        button_sum.add_observer(button_yAxisFromZero)
+        button_sum.add_observer(button_start_image_acquisition)
+        button_sum.add_observer(button_stop_image_acquisition)
+        button_sum.add_observer(button_select_file)
+        button_sum.add_observer(button_update)
+        button_sum.add_observer(button_connect)
+        button_sum.add_observer(button_disconnect)
+        button_sum.add_observer(button_dev_attribute)
+        button_sum.add_observer(button_toggle_drawing)
+        button_sum.add_observer(self._widget_device_list)
+        button_sum.add_observer(self._widget_device_list2)
+        button_sum.add_observer(self._widget_device_list3)
+        button_sum.add_observer(button_roi)
 
         # Add buttons to groups:
 
@@ -657,6 +705,7 @@ class Harvester(QMainWindow):
         group_device.addAction(button_stop_image_acquisition)
         group_device.addAction(button_roi)
         group_device.addAction(button_sum)
+        group_device.addAction(button_yAxisFromZero)
         group_device.addAction(button_save)
         group_device.addAction(button_dev_attribute)
 
@@ -698,36 +747,6 @@ class Harvester(QMainWindow):
     @ia.setter
     def ia(self, value):
         self._ia = value
-
-    # def on_mouse_press(self, event):
-    #     self._is_dragging = True
-    #     ###
-    #     self._origin = event.pos
-    #     print(self._origin)
-    #     delta = event.pos - self._origin
-    #     print(self._width)
-    #     print(self._height)
-    #     #deltaX = self.width - self._origin[0]
-    #     print(delta)
-    #     self._origin = event.pos
-    #     self._x_click = self._origin[0]
-    #     self._y_click = self._origin[1]
-    #     self._origin[0] = 0
-    #     self._origin[1] = 0
-    #     print(self._x_click)
-    #     print(self._y_click)
-
-    # def on_mouse_release(self, event):
-    #     self._is_dragging = False
-    #     ###
-    #     self._origin2 = event.pos
-    #     print(self._origin2)
-    #     self._x_release = self._coordinate[0]
-    #     self._y_release = self._coordinate[1]
-    #     self._coordinate[0] = 0
-    #     self._coordinate[1] = 0
-    #     print(self._x_release)
-    #     print(self._y_release)
 
     def action_on_connect(self):
         #
@@ -854,24 +873,21 @@ class Harvester(QMainWindow):
         print('self.ia.remote_device.node_map.AcquisitionFrameRate.value after: ', self.ia.remote_device.node_map.AcquisitionFrameRate.value)
 
     def plot(self):
-        def callback_func(cls_instance):
-            """
-        cls_instance: NavigationToolbar2TK or NavigationToolbar2QT
-        """
-            def wrapper():
-                cutN = len(self.timeX)
-                self.pixelSums = self.pixelSums[cutN:]
-                self.timeX = self.timeX[cutN:]
-                ax.cla()
-            return wrapper
+#        def callback_func(cls_instance):
+#            def wrapper():
+#                cutN = len(self.timeX)
+#                self.pixelSums = self.pixelSums[cutN:]
+#                self.timeX = self.timeX[cutN:]
+#                ax.cla()
+#            return wrapper
 
-        icons = tool.Icons('/usr/local/lib/python3.7/dist-packages/harvesters_gui/_private/frontend/image/icon/')
-        tool.TOOLITEMS = [(
-                    "Python Icon",                      # Widget name
-                    "Tooltip Python icon",              # Tooltip text
-                    icons.icon_path("reset.png"),      # Icon png complete path with name
-                    callback_func                       # Callback function
-                    )]
+#        icons = tool.Icons('/usr/local/lib/python3.7/dist-packages/harvesters_gui/_private/frontend/image/icon/')
+#        tool.TOOLITEMS = [(
+#                    "Python Icon",                      # Widget name
+#                    "Tooltip Python icon",              # Tooltip text
+#                    icons.icon_path("reset.png"),      # Icon png complete path with name
+#                    callback_func                       # Callback function
+#                    )]
 
         # plot current horizontal and vertical sums once first
 #        with self.ia.fetch() as buffer:
@@ -896,7 +912,6 @@ class Harvester(QMainWindow):
 #                plt.show(block=False)
 
         def pause(interval):
-            print('pausing')
             backend = plt.rcParams['backend']
             if backend in matplotlib.rcsetup.interactive_bk:
                 figManager = matplotlib._pylab_helpers.Gcf.get_active()
@@ -907,14 +922,17 @@ class Harvester(QMainWindow):
                     canvas.start_event_loop(interval)
                     return
 
+        plt.ion()
         f, ax = plt.subplots(1)
         print('f.number: ', f.number)
-        figure, (ax1, ax2) = plt.subplots(1, 2, constrained_layout = True)
+        figure, ax1 = plt.subplots(1)
         print('figure.number: ', figure.number)
         self.timeX = []
         self.pixelSums = []
         self.timeStep = 0
-        while self._plotting == 1 and (plt.fignum_exists(f.number) or plt.fignum_exists(figure.number)):
+        plt.show(block=False)
+
+        while self._plotting == True and (plt.fignum_exists(f.number) or plt.fignum_exists(figure.number)):
             self.timeX.append(self.timeStep)
             with self.ia.fetch() as buffer:
                 component = buffer.payload.components[0]
@@ -925,16 +943,16 @@ class Harvester(QMainWindow):
 
                 lineSumHorizontal = _2d.sum(axis=1).tolist()
                 lineSumVertical = _2d.sum(axis=0).tolist()
-                plt.ion()
+#                plt.ion()
                 #figure.tight_layout(pad=5.0)
                 #plt.ylabel("summed pixel values (vertical)")
                 ax1.plot(lineSumVertical, color='red')
                 ax1.set_xlabel("image width")
                 ax1.set_ylabel("pixel values summed horizontally")
-                ax2.plot(lineSumHorizontal, color='green')
-                ax2.set_xlabel("image height")
-                ax2.set_ylabel("pixel values summed vertically")
-                plt.show(block=False)
+                ax1.plot(lineSumHorizontal, color='green')
+                #ax1.set_xlabel("image height")
+                #ax1.set_ylabel("pixel values summed vertically")
+#                plt.show(block=False)
 
 
                 lineSumHorizontal = _2d.sum(axis=1).tolist()
@@ -942,34 +960,57 @@ class Harvester(QMainWindow):
                 imageSum = np.array(lineSumHorizontal).sum(axis=0).tolist()
                 self.pixelSums.append(imageSum)
 
-                ax.plot(self.timeX, self.pixelSums)
-                ax.set_ylim(ymin=0)
+                #plt.gca().clear()
+
+                ax.plot(self.timeX, self.pixelSums, color="orange")
+                if self.ylim == 0:
+                    ax.set_ylim(ymin=0)
+                    ax1.set_ylim(ymin=0)
+                else:
+                    ax.set_ylim(ymin=min(self.pixelSums))
+                    ax1.set_ylim(ymin=min(min(lineSumHorizontal), min(lineSumVertical)))
+
                 ax.set_xlabel("seconds")
                 ax.set_ylabel("pixel values summed")
 
-                plt.show(block=False)
+ #               plt.show(block=False)
             self.timeStep += 0.25
             pause(0.25)
             ax1.cla()
-            ax2.cla()
+            #ax2.cla()
 #        if not plt.fignum_exists(f.number):
 #            if not plt.fignum_exists(figure.number):
 #                self.action_on_sum()
 
     def action_on_sum(self):
-        if self._plotting == 0:
+        if self._plotting == False:
             plt.close('all')
-            self._plotting = 1
+            self._plotting = True
+            print('self._plotting', self._plotting)
             self.plot()
         else:
-            self._plotting = 0
+            self._plotting = False
+            print('self._plotting', self._plotting)
             plt.close('all')
-
 
     def is_enabled_on_sum(self):
         enable = False
         if self.cti_files:
-            if self.ia and (self._remoteControl == False) and self._acquisitionRunning == True:
+            if self.ia and (self._remoteControl == False) and self._acquisitionRunning:
+                enable = True
+        return enable
+
+    def action_on_y_axis_from_zero(self):
+        plt.show(block=False)
+        if self.ylim == 0:
+            self.ylim = 1
+        else:
+            self.ylim = 0
+
+    def is_enabled_on_y_axis_from_zero(self):
+        enable = False
+        if self.cti_files:
+            if self.ia and (self._remoteControl == False) and self._acquisitionRunning: #and self._plotting:
                 enable = True
         return enable
 
@@ -1158,40 +1199,57 @@ class Harvester(QMainWindow):
             print('x2: ', x2)
             print('y2: ', y2)
 
-            if x1 > x2 and y1 < y2:
+            oldX2 = x1 + x2
+            oldY2 = y1 + y2
+            print('oldX2, oldY2: ', oldX2, oldY2)
+
+            # DOWN LEFT
+            if x1 > oldX2 and y1 < oldY2:
+                print('if x1 > oldX2 and y1 < oldY2:')
                 xTemp = x1
-                x1 = x2
-                x2 = xTemp
-                yDistance = y1 - y2
+                x1 = oldX2
+                oldX2 = xTemp
+                print('x1, oldX2: ', x1, oldX2)
+                yDistance = y1 - oldY2
+                print('yDistance: ', yDistance)
                 y1 = y1 - yDistance
-                y2 = y2 + yDistance
-            elif x1 < x2 and y1 > y2:
-                yDistance = y1 - y2
+                oldY2 = oldY2 + yDistance
+                print('y1, oldY2: ', y1, oldY2)
+            # UP RIGHT
+            elif x1 < oldX2 and y1 > oldY2:
+                print('elif x1 < oldX2 and y1 > oldY2:')
+                yDistance = y1 - oldY2
+                print('yDistance: ', yDistance)
                 y1 = y1 - yDistance
-                y2 = y2 + yDistance
-#            elif x1 > x2 and y1 > y2:
-#                xTemp = x1
-#                yTemp = y1
-#                x1 = x2
-#                x2 = xTemp
-#                y1 = y2
-#                y2 = yTemp
+                oldY2 = oldY2 + yDistance
+                print('y1, oldY2: ', y1, oldY2)
+            # UP LEFT
+            elif x1 > oldX2 and y1 > oldY2:
+                print('elif x1 > oldX2 and y1 > oldY2:')
+                xTemp = x1
+                yTemp = y1
+                x1 = oldX2
+                oldX2 = xTemp
+                print('x1, oldX2: ', x1, oldX2)
+                y1 = oldY2
+                oldY2 = yTemp
+                print('y1, oldY2: ', y1, oldY2)
 
             self.action_on_stop_image_acquisition()
             print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
             print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
 #            self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - (self.ia.remote_device.node_map.Width.value - (x1 + x2))
 #            self.ia.remote_device.node_map.Height.value = self.ia.remote_device.node_map.Height.value - (self.ia.remote_device.node_map.Height.value - (y1 + y2)) + 32
-            self.ia.remote_device.node_map.Width.value = x1 + x2
-            self.ia.remote_device.node_map.Height.value = y1 + y2 + 32
+            self.ia.remote_device.node_map.Width.value = self.ia.remote_device.node_map.Width.value - x1
+            self.ia.remote_device.node_map.Height.value = self.ia.remote_device.node_map.Height.value - y1 - 32
             print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
             print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
             self.ia.remote_device.node_map.OffsetX.value = x1
             self.ia.remote_device.node_map.OffsetY.value = y1 + 32
             print('self.ia.remote_device.node_map.OffsetX.value: ', self.ia.remote_device.node_map.OffsetX.value)
             print('self.ia.remote_device.node_map.OffsetY.value: ', self.ia.remote_device.node_map.OffsetY.value)
-            self.ia.remote_device.node_map.Width.value = x2
-            self.ia.remote_device.node_map.Height.value = y2
+            self.ia.remote_device.node_map.Width.value = int(np.abs(x2))
+            self.ia.remote_device.node_map.Height.value = int(np.abs(y2))
             print('self.ia.remote_device.node_map.Width.value: ', self.ia.remote_device.node_map.Width.value)
             print('self.ia.remote_device.node_map.Height.value: ', self.ia.remote_device.node_map.Height.value)
             self.action_on_start_image_acquisition()
@@ -1249,7 +1307,7 @@ class Harvester(QMainWindow):
 
     def action_on_stop_image_acquisition(self):
         self._acquisitionRunning = False
-        self._plotting = 0
+        self._plotting = False
         plt.close('all')
         # Stop statistics measurement:
         self._thread_statistics_measurement.stop()
@@ -1471,6 +1529,16 @@ class ActionRoi(Action):
         super().__init__(
             icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
         )
+
+class ActionYAxisFromZero(Action):
+    def __init__(
+            self, icon=None, title=None, parent=None, action=None, is_enabled=None
+    ):
+        #
+        super().__init__(
+            icon=icon, title=title, parent=parent, action=action, is_enabled=is_enabled
+        )
+
 
 class ActionSaveImage(Action):
     def __init__(

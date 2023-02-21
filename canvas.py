@@ -377,6 +377,17 @@ class Canvas2D(CanvasBase):
         self._program['u_model'] = np.eye(4, dtype=np.float32)
         self._program['u_view'] = np.eye(4, dtype=np.float32)
 
+        ps = self.pixel_scale
+
+        n = 10000
+        v_position = 0.25 * np.random.randn(n, 2).astype(np.float32)
+        v_color = np.random.uniform(0, 1, (n, 3)).astype(np.float32)
+        v_size = np.random.uniform(2*ps, 12*ps, (n, 1)).astype(np.float32)
+
+        self._program['a_color'] = gloo.VertexBuffer(v_color)
+        self._program['a_position'] = gloo.VertexBuffer(v_position)
+        self._program['a_size'] = gloo.VertexBuffer(v_size)
+
         #
         self._coordinate = [0, 0]
 
