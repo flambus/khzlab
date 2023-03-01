@@ -754,6 +754,7 @@ class Harvester(QMainWindow):
             self._ia = self.harvester_core.create(
                 self.device_list.currentIndex()
             )
+            self.setWindowTitle(self._widget_device_list.currentText())
             # We want to hold one buffer to keep the chunk data alive:
             self._ia.num_buffers += 1
         except (
@@ -948,7 +949,7 @@ class Harvester(QMainWindow):
                 #plt.ylabel("summed pixel values (vertical)")
                 ax1.plot(lineSumVertical, color='red')
                 ax1.set_xlabel("image width")
-                ax1.set_ylabel("pixel values summed horizontally")
+                ax1.set_ylabel("pixel values summed horizontally (green) and vertically (red)")
                 ax1.plot(lineSumHorizontal, color='green')
                 #ax1.set_xlabel("image height")
                 #ax1.set_ylabel("pixel values summed vertically")
@@ -964,11 +965,13 @@ class Harvester(QMainWindow):
 
                 ax.plot(self.timeX, self.pixelSums, color="orange")
                 if self.ylim == 0:
+#                    ax.autoscale(True)
                     ax.set_ylim(ymin=0)
                     ax1.set_ylim(ymin=0)
                 else:
                     ax.set_ylim(ymin=min(self.pixelSums))
                     ax1.set_ylim(ymin=min(min(lineSumHorizontal), min(lineSumVertical)))
+#                    ax.autoscale(True)
 
                 ax.set_xlabel("seconds")
                 ax.set_ylabel("pixel values summed")
