@@ -144,6 +144,7 @@ class CanvasBase(app.Canvas):
 
         # Clear the canvas in gray.
         gloo.clear(color=self._background_color)
+        self._program.draw('points')
 
         drew = False
         try:
@@ -357,7 +358,12 @@ class Canvas2D(CanvasBase):
         self._coordinate = None
         self._translate = 0.
         self._latest_translate = self._translate
-        self._magnification = 2.
+        f = open("sentechGUIparameters.txt", "r")
+        params = f.readline().split(" ")
+        self._magnification = float(params[2])
+        print('init magnif: ', self._magnification)
+        f.close()
+        # self._magnification = 1.
 
         #
         self._x_click = self._x_click
@@ -366,7 +372,11 @@ class Canvas2D(CanvasBase):
         self._y_release = self._y_release
 
         # Apply shaders.
-        self._program = Program(
+        # self._program = Program(
+        #     self._vertex_shader, self._fragment_shader, count=4
+        # )
+
+        self._program = gloo.Program(
             self._vertex_shader, self._fragment_shader, count=4
         )
 
@@ -387,17 +397,6 @@ class Canvas2D(CanvasBase):
         self._program['u_model'] = np.eye(4, dtype=np.float32)
         self._program['u_view'] = np.eye(4, dtype=np.float32)
 
-        ps = self.pixel_scale
-
-        n = 10000
-        v_position = 0.25 * np.random.randn(n, 2).astype(np.float32)
-        v_color = np.random.uniform(0, 1, (n, 3)).astype(np.float32)
-        v_size = np.random.uniform(2*ps, 12*ps, (n, 1)).astype(np.float32)
-
-        self._program['a_color'] = gloo.VertexBuffer(v_color)
-        self._program['a_position'] = gloo.VertexBuffer(v_position)
-        self._program['a_size'] = gloo.VertexBuffer(v_size)
-
         #
         self._coordinate = [0, 0]
 
@@ -410,6 +409,17 @@ class Canvas2D(CanvasBase):
             (self._height, self._width), dtype='uint8'
         )
 
+        self.ps = self.pixel_scale
+        self.n = 1
+        v_position = np.array([[-0.5, -0.7]]).astype(np.float32)
+        v_color = np.random.uniform(0, 1, (self.n, 3)).astype(np.float32)
+        v_size = np.array([[9.965809]]).astype(np.float32)
+        self._program['a_color'] = gloo.VertexBuffer(v_color)
+        self._program['a_position'] = gloo.VertexBuffer(v_position)
+        self._program['a_size'] = gloo.VertexBuffer(v_size)
+        gloo.set_state(clear_color='white', blend=True,
+                       blend_func=('src_alpha', 'one_minus_src_alpha'))
+        gloo.clear(color=True, depth=True)
         #
         self.apply_magnification()
 
@@ -423,6 +433,7 @@ class Canvas2D(CanvasBase):
             #
             payload = buffer.payload
             component = payload.components[0]
+            print('component: ', component)
             width = component.width
             height = component.height
 
@@ -490,9 +501,9 @@ class Canvas2D(CanvasBase):
 
     def apply_magnification(self):
         #
-        canvas_w, canvas_h = self.physical_size
-        print('canvas_w, canvas_h: ', canvas_w, canvas_h)
-        gloo.set_viewport(0, 0, canvas_w, canvas_h)
+        self.canvas_w, self.canvas_h = self.physical_size
+        print('canvas_w, canvas_h: ', self.canvas_w, self.canvas_h)
+        gloo.set_viewport(0, 0, self.canvas_w, self.canvas_h)
 
         #
         self.ratio = self._magnification
@@ -500,16 +511,28 @@ class Canvas2D(CanvasBase):
         print('w, h: ', w, h)
 
         print('self._magnification: ', self._magnification)
+        
+        # params = []
+        # f = open("sentechGUIparameters.txt", "r+")
+        # # params = f.readline().split(" ")
+        # # params[2] = self._magnification
+        
+        # # for p in params:
+        # #     paramStr += str(p)
+        # #     paramStr += ' '
+        # print('paramStr', paramStr)
+        # f.write(paramStr)
+        # f.close()
 
         self._program['u_projection'] = ortho(
             self._coordinate[0],
-            canvas_w * self.ratio + self._coordinate[0],
+            self.canvas_w * self.ratio + self._coordinate[0],
             self._coordinate[1],
-            canvas_h * self.ratio + self._coordinate[1],
+            self.canvas_h * self.ratio + self._coordinate[1],
             -1, 1
         )
 
-        x, y = int((canvas_w * self.ratio - w) / 2), int((canvas_h * self.ratio - h) / 2)  # centering x & y
+        x, y = int((self.canvas_w * self.ratio - w) / 2), int((self.canvas_h * self.ratio - h) / 2)  # centering x & y
         print('x, y: ', x, y)
 
         self._xDelta = x / self._magnification
@@ -524,7 +547,6 @@ class Canvas2D(CanvasBase):
         self._data['a_position'] = np.array(
             [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]
         )
-
         #
         self._program.bind(gloo.VertexBuffer(self._data))
 
