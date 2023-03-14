@@ -46,7 +46,7 @@ class CanvasBase(app.Canvas):
     def __init__(
             self, *,
             image_acquirer=None,
-            width=640, height=480,
+            width=500, height=480,
             display_rate=30.,
             background_color='gray',
             vsync=True
@@ -92,6 +92,10 @@ class CanvasBase(app.Canvas):
 
         #
         self._totalClicks = 0
+
+        self.clickCountUntil2 = 0
+
+        self.ratio = 1.0
 
         #
         self._display_rate = display_rate
@@ -224,6 +228,12 @@ class CanvasBase(app.Canvas):
         self._origin = event.pos
         print(self._origin)
         self._totalClicks += 1
+        if self.clickCountUntil2 == 0:
+            self.clickCountUntil2 += 1
+        elif self.clickCountUntil2 == 1:
+            self.clickCountUntil2 += 1
+        elif self.clickCountUntil2 == 2:
+            self.clickCountUntil2 -= 1
         print('self._totalClicks: ', self._totalClicks)
         if self._click_counter == 0:
             self._x_click = self._origin[0]
@@ -347,7 +357,7 @@ class Canvas2D(CanvasBase):
         self._coordinate = None
         self._translate = 0.
         self._latest_translate = self._translate
-        self._magnification = 1.
+        self._magnification = 2.
 
         #
         self._x_click = self._x_click
@@ -485,7 +495,7 @@ class Canvas2D(CanvasBase):
         gloo.set_viewport(0, 0, canvas_w, canvas_h)
 
         #
-        ratio = self._magnification
+        self.ratio = self._magnification
         w, h = self._width, self._height
         print('w, h: ', w, h)
 
@@ -493,13 +503,13 @@ class Canvas2D(CanvasBase):
 
         self._program['u_projection'] = ortho(
             self._coordinate[0],
-            canvas_w * ratio + self._coordinate[0],
+            canvas_w * self.ratio + self._coordinate[0],
             self._coordinate[1],
-            canvas_h * ratio + self._coordinate[1],
+            canvas_h * self.ratio + self._coordinate[1],
             -1, 1
         )
 
-        x, y = int((canvas_w * ratio - w) / 2), int((canvas_h * ratio - h) / 2)  # centering x & y
+        x, y = int((canvas_w * self.ratio - w) / 2), int((canvas_h * self.ratio - h) / 2)  # centering x & y
         print('x, y: ', x, y)
 
         self._xDelta = x / self._magnification
