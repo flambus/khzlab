@@ -39,6 +39,7 @@ from PyQt5.QtCore import QMutexLocker, QMutex, pyqtSignal, QThread
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QMainWindow, QAction, QComboBox, \
     QDesktopWidget, QFileDialog, QDialog, QShortcut, QApplication, QLineEdit, QSpinBox, QMenu
+from PyQt5.QtCore import QSettings, QPoint, QSize
 
 from genicam.gentl import NotInitializedException, InvalidHandleException, \
     InvalidIdException, ResourceInUseException, \
@@ -74,10 +75,17 @@ class Harvester(QMainWindow):
         self._logger = logger or get_logger(name='harvesters')
 
         #
-        super().__init__()
+        super(Harvester, self).__init__()
 
         #
         self._mutex = QMutex()
+
+        #
+        self.settings = QSettings( 'My company', 'Harvester')     
+
+        # Initial window size/pos last saved. Use default values for first time
+        self.resize(self.settings.value("size", QSize(270, 225)))
+        self.move(self.settings.value("pos", QPoint(50, 50)))
 
         profile = True if 'HARVESTER_PROFILE' in os.environ else False
         self._harvester_core = HarvesterCore(
@@ -109,7 +117,7 @@ class Harvester(QMainWindow):
 
         self._origin = [0, 0]
 
-        self._cropped = 0
+        self._cropped = False
 
         self._remoteControl = False
 
@@ -155,7 +163,11 @@ class Harvester(QMainWindow):
 
     def closeEvent(self, QCloseEvent):
         #
+        print('entered closing')
         if self._widget_attribute_controller:
+            self.settings.setValue("size", self.size())
+            self.settings.setValue("pos", self.pos())
+
             self._widget_attribute_controller.close()
 
         #
@@ -544,6 +556,8 @@ class Harvester(QMainWindow):
         button_about.toggle()
         observers.append(button_about)
 
+        observers.append(self._widget_canvas)
+
         # Configure observers:
 
         #
@@ -689,6 +703,8 @@ class Harvester(QMainWindow):
         button_sum.add_observer(self._widget_device_list3)
         button_sum.add_observer(button_roi)
 
+        button_roi.add_observer(self._widget_canvas)
+
         # Add buttons to groups:
 
         #
@@ -782,15 +798,16 @@ class Harvester(QMainWindow):
         self.ia.remote_device.node_map.OffsetY.value = 0
         self.ia.remote_device.node_map.Width.value = 1280
         self.ia.remote_device.node_map.Height.value = 966
-        self._width = int(self.ia.remote_device.node_map.Width.value)
-        self._heigth = int(self.ia.remote_device.node_map.Height.value)
-        self.standardWidth = self._width
-        self.standardHeigth = self._heigth
+        # self._width = int(self.ia.remote_device.node_map.Width.value)
+        # self._heigth = int(self.ia.remote_device.node_map.Height.value)
+        # self.standardWidth = self._width
+        # self.standardHeigth = self._heigth
+        self.standardWidth = self.ia.remote_device.node_map.Width.value
+        self.standardHeigth = self.ia.remote_device.node_map.Height.value
         #print(dir(self.ia.remote_device.node_map))
-        print("BinningHorizontal ", self.ia.remote_device.node_map.BinningVertical.value)
-        print(self._width)
-        print(self._heigth)
-        self._resize_window(self._width, self._heigth)
+        # print(self._width)
+        # print(self._heigth)
+        # self._resize_window(self._width, self._heigth)
 
         try:
             if self.ia.remote_device.node_map:
@@ -1148,8 +1165,8 @@ class Harvester(QMainWindow):
     def action_on_roi(self):
         if self._widget_canvas._totalClicks == 0 or ((self._widget_canvas._totalClicks % 2) != 0):
             pass
-        elif self._cropped == 0 and self._widget_canvas._totalClicks != 0:
-            self._cropped += 1
+        elif self._cropped == False and self._widget_canvas._totalClicks != 0:
+            self._cropped = True
             print(self._cropped)
             self._widget_canvas._x_click = int(self._widget_canvas._x_click - self._widget_canvas._xDelta)
             self._widget_canvas._y_click = int(self._widget_canvas._y_click - self._widget_canvas._yDelta)
@@ -1260,10 +1277,10 @@ class Harvester(QMainWindow):
             self.action_on_stop_image_acquisition()
             self.ia.remote_device.node_map.OffsetX.value = 0
             self.ia.remote_device.node_map.OffsetY.value = 0
-            self.ia.remote_device.node_map.Width.value = self._width
-            self.ia.remote_device.node_map.Height.value = self._heigth
+            self.ia.remote_device.node_map.Width.value = self.standardWidth
+            self.ia.remote_device.node_map.Height.value = self.standardHeigth
             self.action_on_start_image_acquisition()
-            self._cropped -= 1
+            self._cropped = False
             self._widget_canvas._totalClicks = 0
             self._widget_canvas._x_click += self._widget_canvas._xDelta
             self._widget_canvas._y_click += self._widget_canvas._yDelta
@@ -1279,6 +1296,10 @@ class Harvester(QMainWindow):
 
     def action_on_start_image_acquisition(self):
         self._acquisitionRunning = True
+
+        self._widget_canvas.ratio = 2.0
+        self._widget_canvas.apply_magnification
+        
         print('self.acquisitionRunning: ', self._acquisitionRunning)
         if self.ia.is_acquiring():
             print("if")
@@ -1416,13 +1437,15 @@ class Harvester(QMainWindow):
             self.ia.remote_device.node_map.PixelFormat.value
         )
         #
-        message_statistics = '{0:.1f} fps, elapsed {1}, {2} images, {3:.1f} fps'.format(
+        message_statistics = '{0:.1f} fps, elapsed {1}, {2} images, {3:.1f} fps, {4} points selected, image cropped: {5}'.format(
             self.ia.statistics.fps,
             str(datetime.timedelta(seconds=int(self.ia.statistics.elapsed_time_s))),
             #int(self.ia.statistics.elapsed_time_s),
             self.ia.statistics.num_images,
             #self.ia.remote_device.node_map.AcquisitionFrameRate.value
-            int(str.split(self._widget_display_rates.currentText())[0])
+            int(str.split(self._widget_display_rates.currentText())[0]),
+            self._widget_canvas.clickCountUntil2,
+            self._cropped
         )
         #
         self._signal_update_statistics.emit(
@@ -1586,4 +1609,3 @@ if __name__ == '__main__':
     harvester = Harvester(vsync=True)
     harvester.show()
     sys.exit(app.exec_())
-
