@@ -80,13 +80,6 @@ class Harvester(QMainWindow):
         #
         self._mutex = QMutex()
 
-        #
-        self.settings = QSettings( 'My company', 'Harvester')     
-
-        # Initial window size/pos last saved. Use default values for first time
-        self.resize(self.settings.value("size", QSize(270, 225)))
-        self.move(self.settings.value("pos", QPoint(50, 50)))
-
         profile = True if 'HARVESTER_PROFILE' in os.environ else False
         self._harvester_core = HarvesterCore(
             profile=profile, logger=self._logger
@@ -136,8 +129,24 @@ class Harvester(QMainWindow):
             update_cycle_us=250000
         )
 
+        # self._widget_canvas.ratio = 1.0
+        # self._widget_canvas.apply_magnification
+
         #
-        self._initialize_widgets(1200, 600)
+        params = []
+        f = open("sentechGUIparameters.txt", "r")
+        params = f.readline().split(" ")
+        f.close()
+        
+        print('params: ', params)
+
+        for x in range(2):
+            print(x)
+            params[x] = int(params[x])
+
+        print('params: ', params)
+
+        self._initialize_widgets(params[0], params[1])
 
         file_path = '/opt/sentech/lib/libstgentl.cti'
 
@@ -163,11 +172,10 @@ class Harvester(QMainWindow):
 
     def closeEvent(self, QCloseEvent):
         #
-        print('entered closing')
+        f = open("sentechGUIparameters.txt", "w")
+        f.write(str(self._widget_canvas.canvas_w) + ' ' + str(self._widget_canvas.canvas_h + 62) + ' ' + str(self._widget_canvas._magnification) + ' end')
+        f.close()
         if self._widget_attribute_controller:
-            self.settings.setValue("size", self.size())
-            self.settings.setValue("pos", self.pos())
-
             self._widget_attribute_controller.close()
 
         #
@@ -1296,9 +1304,6 @@ class Harvester(QMainWindow):
 
     def action_on_start_image_acquisition(self):
         self._acquisitionRunning = True
-
-        self._widget_canvas.ratio = 2.0
-        self._widget_canvas.apply_magnification
         
         print('self.acquisitionRunning: ', self._acquisitionRunning)
         if self.ia.is_acquiring():
